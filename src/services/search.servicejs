@@ -1,0 +1,15 @@
+const pool = require("../config/db");
+
+exports.searchCustomers = async (query) => {
+  const result = await pool.query(
+    `
+    SELECT * FROM customers
+    WHERE name ILIKE $1
+    OR email ILIKE $1
+    OR phone ILIKE $1
+    `,
+    [`%${query}%`]
+  );
+
+  return result.rows;
+};
