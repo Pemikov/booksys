@@ -1,26 +1,14 @@
 const express = require('express');
 const router = express.Router();
-const { getDayAvailability } = require('../services/availabilityService');
-const pool = require('../db');
+const calendarController = require('../controllers/calendar.controller');
 
-router.get('/day', async (req, res) => {
-  const { resourceId, date } = req.query;
-
-  const data = await getDayAvailability(resourceId, date);
-  res.json(data);
-});
-
-router.get('/month', async (req, res) => {
-  const { resourceId } = req.query;
-
-  const result = await pool.query(`
-    SELECT DATE(start_time) as day, COUNT(*) as booked
-    FROM bookings
-    WHERE resource_id=$1 AND status='booked'
-    GROUP BY day
-  `, [resourceId]);
-
-  res.json(result.rows);
-});
+// Public calendar routes
+router.get('/availability/:date', calendarController.getAvailableSlots);
+router.get('/weekly/:start_date', calendarController.getWeeklyCalendar);
+router.get('/business-hours', calendarController.getBusinessHours);
+router.get('/services', calendarController.getServices);
+router.get('/staff', calendarController.getStaff);
+router.post('/bookings', calendarController.createBooking);
+router.put('/bookings/:id/cancel', calendarController.cancelBooking);
 
 module.exports = router;
