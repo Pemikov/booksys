@@ -3,9 +3,9 @@ const cors = require('cors');
 const path = require('path');
 require('dotenv').config();
 
-// Adjust paths - go up two levels from src/config to root
-const calendarRoutes = require('../../routes/calendar.routes');
-const db = require('./db'); // db.js should also be in src/config
+// Fix: Change from calendar.routes.js to calendar.js
+const calendarRoutes = require('../routes/calendar');
+const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '../../public'))); // Go up to root/public
+app.use(express.static(path.join(__dirname, '../../public')));
 
 // Routes
 app.use('/api/calendar', calendarRoutes);
@@ -31,4 +31,5 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
     console.log(`📅 Calendar API: http://localhost:${PORT}/api/calendar`);
+    console.log(`✅ Health check: http://localhost:${PORT}/api/health`);
 });

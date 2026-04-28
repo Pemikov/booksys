@@ -1,16 +1,9 @@
-const express = require("express");
+// src/app.js - Alternative entry point (optional)
+require('dotenv').config();
+const server = require('./config/server');
 
-const publicRoutes = require("./routes/public.routes");
-const adminRoutes = require("./routes/admin.routes");
-const customerRoutes = require("./routes/customer.routes");
+// This file just exists to maintain compatibility
+// The actual server is started from config/server.js
 
-const app = express();
-
-app.use(express.json());
-
-// routes
-app.use("/public", publicRoutes);
-app.use("/admin", adminRoutes);
-app.use("/customer", customerRoutes);
-
-module.exports = app;
+console.log('Starting from app.js...');
+console.log('Use "npm run dev" or "npm start" to run the server');

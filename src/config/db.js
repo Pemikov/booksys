@@ -32,13 +32,3 @@ module.exports = {
     getClient,
     pool
 };
-
-const getClient = async () => {
-    return await pool.connect();
-};
-
-module.exports = {
-    query: (text, params) => pool.query(text, params),
-    getClient,
-    pool
-};
