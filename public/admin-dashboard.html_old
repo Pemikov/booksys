@@ -357,12 +357,16 @@ async function init() {
         let currentDate = new Date();
         let businessHours = [];
         
+        // Fetch business hours
         try {
             const res = await fetch('/api/admin/settings', { headers: { 'Authorization': token } });
             const data = await res.json();
             businessHours = data.business_hours || [];
-        } catch(e) { console.error('Failed to load hours:', e); }
+        } catch(e) {
+            console.error('Failed to load hours:', e);
+        }
 
+        // Render UI structure
         container.innerHTML = `<div class="page-header"><h1>Calendar</h1><div class="view-selector">
             <button class="view-btn" data-view="month">Month</button>
             <button class="view-btn" data-view="week">Week</button>
@@ -371,64 +375,80 @@ async function init() {
         <div class="calendar-nav"><button class="nav-arrow" id="prevBtn">← Prev</button><span id="calDate" class="current-date"></span><button class="nav-arrow" id="nextBtn">Next →</button></div>
         <div id="calContainer" class="calendar-view"><div class="spinner">Loading...</div></div>`;
 
+        // Helper to get availability
         async function getAvailability(date) {
-            // Use local date string to avoid timezone shift
-            const y = date.getFullYear();
-            const m = String(date.getMonth() + 1).padStart(2,'0');
-            const d = String(date.getDate()).padStart(2,'0');
-            const dateStr = `${y}-${m}-${d}`;
+            const dateStr = date.toISOString().split('T')[0];
             const res = await fetch(`/api/admin/availability/${dateStr}`, { headers: { 'Authorization': token } });
             const data = await res.json();
             return data.slots || [];
         }
         
+        // Render the active view
         async function renderView() {
             const calDiv = document.getElementById('calContainer');
             if (!calDiv) return;
+            
             const year = currentDate.getFullYear();
             const month = currentDate.getMonth();
             
             if (currentView === 'month') {
-                // Month view (same as before, unchanged)
+                // MONTH VIEW
                 const statsRes = await fetch(`/api/calendar/monthly-stats/${year}/${month+1}?orgId=${adminInfo.organization_id}`, { headers: { 'Authorization': token } });
                 const statsData = await statsRes.json();
                 const statsMap = {};
                 (statsData.stats || []).forEach(s => { statsMap[s.day_date.split('T')[0]] = s; });
+                
                 const firstDay = new Date(year, month, 1);
                 const lastDay = new Date(year, month + 1, 0);
                 const startWeekday = firstDay.getDay();
                 const daysInMonth = lastDay.getDate();
+                
                 let html = '<div class="month-grid">';
-                ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => html += `<div class="month-day-header">${d}</div>`);
-                for (let i=0; i<startWeekday; i++) html += '<div class="month-day disabled"></div>';
-                for (let d=1; d<=daysInMonth; d++) {
+                ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].forEach(d => html += `<div class="month-day-header">${d}</div>`);
+                
+                for (let i = 0; i < startWeekday; i++) html += '<div class="month-day disabled"></div>';
+                
+                for (let d = 1; d <= daysInMonth; d++) {
                     const date = new Date(year, month, d);
-                    const yyyy = date.getFullYear();
-                    const mm = String(date.getMonth()+1).padStart(2,'0');
-                    const dd = String(d).padStart(2,'0');
-                    const dateStr = `${yyyy}-${mm}-${dd}`;
+                    const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                     const dow = date.getDay();
                     const bh = businessHours.find(h => h.day_of_week === dow);
                     const isOpen = bh?.is_open === true;
                     const stats = statsMap[dateStr] || {};
                     const free = stats.free_slots || 0;
                     const booked = stats.booked_slots || 0;
-                    html += `<div class="month-day ${!isOpen ? 'disabled' : ''}" data-date="${dateStr}" onclick="${isOpen ? `selectDateAdmin('${dateStr}')` : ''}">
+                    
+                    html += `<div class="month-day ${!isOpen ? 'disabled' : ''}" data-date="${dateStr}" 
+                            onclick="${isOpen ? `selectDateAdmin('${dateStr}')` : ''}">
                                 <div class="day-number">${d}</div>
                                 <div class="day-stats">${isOpen ? `${free} free / ${booked} booked` : 'Closed'}</div>
                             </div>`;
                 }
                 html += '</div>';
                 calDiv.innerHTML = html;
-                document.getElementById('calDate').innerText = currentDate.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+                document.getElementById('calDate').innerText = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                
             } else if (currentView === 'day') {
-                // Day view with corrected date string
-                const slots = await getAvailability(currentDate);
-                if (!slots || slots.length === 0) {
-                    calDiv.innerHTML = '<div class="spinner">No slots available for this day</div>';
+                // DAY VIEW
+                const dateStr = currentDate.toISOString().split('T')[0];
+                const dow = currentDate.getDay();
+                const bh = businessHours.find(h => h.day_of_week === dow);
+                
+                if (!bh?.is_open) {
+                    calDiv.innerHTML = '<div class="spinner">This day is closed</div>';
                     return;
                 }
+                
+                const slots = await getAvailability(currentDate);
+                
+                if (!slots || slots.length === 0) {
+                    calDiv.innerHTML = '<div class="spinner">No slots available</div>';
+                    return;
+                }
+                
+                // Build the table
                 let html = '<table class="weekly-table"><thead><tr><th>Time</th><th>Status</th><th>Staff</th><th>Customer</th></tr></thead><tbody>';
+                
                 for (const slot of slots) {
                     html += `<tr class="time-slot ${slot.is_available ? 'available' : 'booked'}">
                                 <td>${slot.slot_start} - ${slot.slot_end}</td>
@@ -437,36 +457,28 @@ async function init() {
                                 <td>${slot.customer_name || (slot.is_available ? '' : 'Booked')}</td>
                             </tr>`;
                 }
+                
                 html += '</tbody></table>';
                 calDiv.innerHTML = html;
                 document.getElementById('calDate').innerText = currentDate.toLocaleDateString();
+                
             } else if (currentView === 'week') {
-                // Week view with corrected date strings
+                // WEEK VIEW
                 const startOfWeek = new Date(currentDate);
                 startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
-                const days = [];
-                for (let i=0; i<7; i++) {
+                let html = '<table class="weekly-table"><thead><tr>';
+                for (let i = 0; i < 7; i++) {
                     const day = new Date(startOfWeek);
                     day.setDate(startOfWeek.getDate() + i);
-                    days.push(day);
+                    html += `<th>${day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</th>`;
                 }
-                let html = '<table class="weekly-table"><thead><tr>';
-                for (const day of days) {
-                    html += `<th>${day.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}</th>`;
-                }
-                html += '</thead><tbody><tr>';
-                for (const day of days) {
-                    const slots = await getAvailability(day);
-                    const availableCount = slots.filter(s => s.is_available).length;
-                    const totalCount = slots.length;
-                    html += `<td style="text-align:center; vertical-align:middle;">${totalCount > 0 ? `${availableCount} / ${totalCount} slots free` : 'Closed'}</td>`;
-                }
-                html += '</tr></tbody></table>';
+                html += '</thead><tbody><tr><td colspan="7" style="text-align:center">Click on a day to view slots</td></tr></tbody></table>';
                 calDiv.innerHTML = html;
                 document.getElementById('calDate').innerText = `Week of ${startOfWeek.toLocaleDateString()}`;
             }
         }
         
+        // Date selection from month view
         window.selectDateAdmin = (dateStr) => {
             const parts = dateStr.split('-');
             currentDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
@@ -476,6 +488,7 @@ async function init() {
             document.querySelector('.view-btn[data-view="day"]')?.classList.add('active');
         };
         
+        // View change handler
         const changeView = (view) => {
             currentView = view;
             renderView();
@@ -483,19 +496,28 @@ async function init() {
             document.querySelector(`.view-btn[data-view="${view}"]`)?.classList.add('active');
         };
         
+        // Date navigation
         const changeDate = (delta) => {
-            if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() + delta);
-            else if (currentView === 'week') currentDate.setDate(currentDate.getDate() + delta * 7);
-            else currentDate.setDate(currentDate.getDate() + delta);
-            renderView();
+            if (currentView === 'month') {
+                currentDate.setMonth(currentDate.getMonth() + delta);
+                renderView();
+            } else if (currentView === 'week') {
+                currentDate.setDate(currentDate.getDate() + delta * 7);
+                renderView();
+            } else {
+                currentDate.setDate(currentDate.getDate() + delta);
+                renderView();
+            }
         };
         
+        // Attach event listeners
         document.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', () => changeView(btn.dataset.view)));
         document.getElementById('prevBtn').addEventListener('click', () => changeDate(-1));
         document.getElementById('nextBtn').addEventListener('click', () => changeDate(1));
         
+        // Initial render
         await renderView();
-    }
+}
 
     async function renderCustomers(container) {
     const res = await fetch('/api/admin/customers', { headers: { 'Authorization': token } });
@@ -737,7 +759,7 @@ async function init() {
         container.innerHTML = `<div class="page-header"><h1>Audit Logs</h1></div>
             <table class="data-table"><thead><tr><th>Time</th><th>Booking ID</th><th>Action</th><th>Details</th></tr></thead><tbody>
             ${logs.map(l => `<tr><td>${new Date(l.changed_at).toLocaleString()}</td><td>${l.booking_id}</td><td>Status: ${l.old_status} → ${l.new_status}</td><td>${l.notes || ''}</td></tr>`).join('')}
-            </tbody></table>`;
+            </tbody></td>`;
         if (!logs.length) container.innerHTML += '<div class="spinner">No logs yet</div>';
     }
 

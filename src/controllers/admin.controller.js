@@ -45,35 +45,92 @@ exports.getAdminAvailability = async (req, res) => {
     try {
         const { date } = req.params;
         const orgId = req.organizationId;
-
-        const result = await db.query(
-            `SELECT 
-                ts.slot_start,
-                ts.slot_end,
-                CASE WHEN b.id IS NULL THEN true ELSE false END as is_available,
-                b.id as booking_id,
-                s.name as staff_name,
-                c.name as customer_name,
-                c.email as customer_email
-             FROM time_slots_template ts
-             CROSS JOIN business_hours bh
-             LEFT JOIN bookings b ON 
-                 b.booking_date = $2
-                 AND b.start_time = ts.slot_start
-                 AND b.organization_id = $1
-                 AND b.status NOT IN ('cancelled', 'completed')
-             LEFT JOIN staff s ON b.staff_id = s.id
-             LEFT JOIN customers c ON b.customer_id = c.id
-             WHERE bh.organization_id = $1
-                 AND bh.day_of_week = EXTRACT(DOW FROM $2::DATE)
-                 AND bh.is_open = true
-                 AND ts.slot_start >= bh.open_time
-                 AND ts.slot_end <= bh.close_time
-             ORDER BY ts.slot_start`,
-            [orgId, date]
+        
+        const dayOfWeek = new Date(date).getDay();
+        
+        // Get business hours
+        const hoursResult = await db.query(
+            `SELECT open_time, close_time, slot_interval 
+             FROM business_hours 
+             WHERE organization_id = $1 AND day_of_week = $2 AND is_open = true`,
+            [orgId, dayOfWeek]
         );
-
-        res.json({ success: true, slots: result.rows });
+        
+        if (hoursResult.rows.length === 0) {
+            return res.json({ success: true, slots: [] });
+        }
+        
+        const { open_time, close_time, slot_interval } = hoursResult.rows[0];
+        
+        // Generate unique slots
+        const slots = [];
+        const seenTimes = new Set();
+        
+        let currentHour = parseInt(open_time.split(':')[0]);
+        let currentMinute = parseInt(open_time.split(':')[1]);
+        const closeHour = parseInt(close_time.split(':')[0]);
+        const closeMinute = parseInt(close_time.split(':')[1]);
+        
+        while (currentHour < closeHour || (currentHour === closeHour && currentMinute < closeMinute)) {
+            const start = `${String(currentHour).padStart(2,'0')}:${String(currentMinute).padStart(2,'0')}:00`;
+            
+            // Skip if we already processed this time
+            if (seenTimes.has(start)) {
+                // Move to next slot
+                currentMinute += slot_interval;
+                if (currentMinute >= 60) {
+                    currentHour += 1;
+                    currentMinute -= 60;
+                }
+                continue;
+            }
+            seenTimes.add(start);
+            
+            // Calculate end time
+            let endHour = currentHour;
+            let endMinute = currentMinute + slot_interval;
+            if (endMinute >= 60) {
+                endHour += 1;
+                endMinute -= 60;
+            }
+            const end = `${String(endHour).padStart(2,'0')}:${String(endMinute).padStart(2,'0')}:00`;
+            
+            // Check if booked
+            const bookingResult = await db.query(
+                `SELECT b.id, s.name as staff_name, c.name as customer_name
+                 FROM bookings b
+                 LEFT JOIN staff s ON b.staff_id = s.id
+                 LEFT JOIN customers c ON b.customer_id = c.id
+                 WHERE b.booking_date = $1 
+                   AND b.start_time = $2 
+                   AND b.organization_id = $3
+                   AND b.status NOT IN ('cancelled', 'completed')`,
+                [date, start, orgId]
+            );
+            
+            // Only add slot if end time is within business hours
+            const endHourNum = parseInt(end.split(':')[0]);
+            const endMinuteNum = parseInt(end.split(':')[1]);
+            if (endHourNum < closeHour || (endHourNum === closeHour && endMinuteNum <= closeMinute)) {
+                slots.push({
+                    slot_start: start.slice(0,5),
+                    slot_end: end.slice(0,5),
+                    is_available: bookingResult.rows.length === 0,
+                    booking_id: bookingResult.rows[0]?.id || null,
+                    staff_name: bookingResult.rows[0]?.staff_name || null,
+                    customer_name: bookingResult.rows[0]?.customer_name || null
+                });
+            }
+            
+            // Move to next slot
+            currentMinute += slot_interval;
+            if (currentMinute >= 60) {
+                currentHour += 1;
+                currentMinute -= 60;
+            }
+        }
+        
+        res.json({ success: true, slots: slots });
     } catch (error) {
         console.error('Error fetching admin availability:', error);
         res.status(500).json({ success: false, error: error.message });
