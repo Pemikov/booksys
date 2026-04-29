@@ -159,6 +159,22 @@
     </div>
     
     <script>
+                // At the top of admin-login.html script
+        if (localStorage.getItem('adminToken')) {
+            // Already logged in – go straight to dashboard
+            window.location.href = '/admin/dashboard';
+        }
+
+        // In the login fetch success handler:
+        if (data.success) {
+            localStorage.setItem('adminToken', data.token);
+            localStorage.setItem('adminInfo', JSON.stringify(data.admin));
+            window.location.href = '/admin/dashboard';   // use href, not replace
+        } else {
+            errorMessage.textContent = data.error || 'Login failed';
+            errorMessage.style.display = 'block';
+        }
+
         const loginForm = document.getElementById('loginForm');
         const errorMessage = document.getElementById('errorMessage');
         const spinner = document.getElementById('spinner');
@@ -184,7 +200,7 @@
                 if (data.success) {
                     localStorage.setItem('adminToken', data.token);
                     localStorage.setItem('adminInfo', JSON.stringify(data.admin));
-                    window.location.replace('/admin/dashboard');
+                    window.location.href('/admin/dashboard');
                 } else {
                     errorMessage.textContent = data.error || 'Login failed';
                     errorMessage.style.display = 'block';
