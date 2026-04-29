@@ -1,1 +1,0 @@
-ssh -i ~/.ssh/booksys.pem -L 3000:localhost:3000 ubuntu@13.40.50.253 -N -v
