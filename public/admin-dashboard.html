@@ -95,17 +95,51 @@
     let token = localStorage.getItem('adminToken');
     let adminInfo = null;
 
-    async function init() {
-        if (!token) { window.location.href = '/admin'; return; }
-        try {
-            const me = await fetch('/api/auth/admin/me', { headers: { 'Authorization': token } });
-            if (!me.ok) throw new Error('Not authenticated');
-            const meData = await me.json();
-            adminInfo = meData.admin;
-            document.getElementById('orgNameSidebar').innerText = adminInfo.organization_name || 'Business';
-            loadPage('dashboard');
-        } catch(e) { localStorage.removeItem('adminToken'); window.location.href = '/admin'; }
+// Helper: Save with automatic page refresh
+async function saveWithRefresh(url, payload, successMessage) {
+    try {
+        const response = await fetch(url, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': token },
+            body: JSON.stringify(payload)
+        });
+        
+        if (response.ok) {
+            // Get current page name
+            const currentPage = document.querySelector('.nav-item.active')?.dataset.page || 'settings';
+            // Reload the current page to show fresh data
+            loadPage(currentPage);
+            showToast(successMessage, 'success');
+        } else {
+            const error = await response.json();
+            showToast(error.error || 'Save failed', 'error');
+        }
+    } catch (error) {
+        showToast('Network error', 'error');
     }
+}
+
+async function init() {
+    if (!token) { window.location.href = '/admin'; return; }
+    try {
+        const me = await fetch('/api/auth/admin/me', { headers: { 'Authorization': token } });
+        if (!me.ok) throw new Error('Not authenticated');
+        const meData = await me.json();
+        adminInfo = meData.admin;
+        document.getElementById('orgNameSidebar').innerText = adminInfo.organization_name || 'Business';
+
+        // Fetch organization settings to get currency
+        const settingsRes = await fetch('/api/admin/settings', { headers: { 'Authorization': token } });
+        const settingsData = await settingsRes.json();
+        const currencyCode = settingsData.organization?.currency || 'USD';
+        const currencySymbols = {
+            USD: '$', EUR: '€', GBP: '£', JPY: '¥', CAD: 'C$', AUD: 'A$', CHF: 'Fr', CNY: '¥', INR: '₹'
+        };
+        window.currencySymbol = currencySymbols[currencyCode] || '$';
+
+        loadPage('dashboard');
+    } catch(e) { localStorage.removeItem('adminToken'); window.location.href = '/admin'; }
+}
 
     function updateAdminDateTime() {
         const now = new Date();
@@ -116,52 +150,34 @@
     setInterval(updateAdminDateTime, 1000);
 
     async function renderServices(container) {
-        try {
-            const res = await fetch('/api/admin/services', { headers: { 'Authorization': token } });
-            const data = await res.json();
-            const services = data.services || [];
+    try {
+        const res = await fetch('/api/admin/services', { headers: { 'Authorization': token } });
+        const data = await res.json();
+        const allServices = data.services || [];
+        
+        // Store all services in a variable for filtering
+        let currentServices = [...allServices];
+        
+        const renderServiceList = (services) => {
+            const servicesList = document.getElementById('servicesList');
+            if (!servicesList) return;
             
-            container.innerHTML = `
-                <div class="page-header">
-                    <h1>Services</h1>
-                    <button class="btn-primary" id="addServiceBtn">+ Add Service</button>
-                </div>
-                <div id="servicesList">
-                    ${services.map(s => `
-                        <div class="settings-section" style="margin-bottom: 15px;">
-                            <div style="display: flex; justify-content: space-between; align-items: center;">
-                                <h3>${escapeHtml(s.name)} (${s.duration_minutes} min) - $${s.price}</h3>
-                                <button class="btn-secondary edit-service" data-id="${s.id}">Edit</button>
-                            </div>
-                            <p>${s.description || ''}</p>
-                        </div>
-                    `).join('')}
-                </div>
-                <div id="serviceModal" class="modal" style="display:none">
-                    <div class="modal-content">
-                        <h2 id="modalTitle">Add Service</h2>
-                        <input type="hidden" id="serviceId">
-                        <div class="form-row"><label>Service Name</label><input id="serviceName" placeholder="e.g., Dental Cleaning"></div>
-                        <div class="form-row"><label>Description</label><textarea id="serviceDescription" rows="3"></textarea></div>
-                        <div class="form-row"><label>Duration (minutes)</label><input id="serviceDuration" type="number" value="30"></div>
-                        <div class="form-row"><label>Buffer (minutes)</label><input id="serviceBuffer" type="number" value="0"></div>
-                        <div class="form-row"><label>Price ($)</label><input id="servicePrice" type="number" step="0.01" value="0"></div>
-                        <div class="form-row" style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="serviceActive" checked style="margin: 0;">
-                                <label for="serviceActive" style="margin: 0;">Active</label>
-                            </div>
-                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                            <button class="btn-secondary" id="closeServiceModal">Cancel</button>
-                            <button class="btn-primary" id="saveServiceBtn">Save</button>
-                        </div>
+            if (services.length === 0) {
+                servicesList.innerHTML = '<div class="spinner">No services found</div>';
+                return;
+            }
+            
+            servicesList.innerHTML = services.map(s => `
+                <div class="settings-section" style="margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3>${escapeHtml(s.name)} (${s.duration_minutes} min) - ${window.currencySymbol}${s.price}</h3>
+                        <button class="btn-secondary edit-service" data-id="${s.id}">Edit</button>
                     </div>
+                    <p>${s.description || ''}</p>
                 </div>
-            `;
+            `).join('');
             
-            // Add event listeners
-            document.getElementById('addServiceBtn')?.addEventListener('click', () => showServiceModal());
-            document.getElementById('closeServiceModal')?.addEventListener('click', () => closeServiceModal());
-            document.getElementById('saveServiceBtn')?.addEventListener('click', saveService);
+            // Re-attach edit event listeners
             document.querySelectorAll('.edit-service').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     const id = btn.dataset.id;
@@ -170,53 +186,111 @@
                     if (data.success) showServiceModal(data.service);
                 });
             });
-            
-            async function saveService() {
-                const serviceData = {
-                    id: document.getElementById('serviceId').value || null,
-                    name: document.getElementById('serviceName').value,
-                    description: document.getElementById('serviceDescription').value,
-                    duration_minutes: parseInt(document.getElementById('serviceDuration').value),
-                    buffer_minutes: parseInt(document.getElementById('serviceBuffer').value),
-                    price: parseFloat(document.getElementById('servicePrice').value),
-                    is_active: document.getElementById('serviceActive').checked
-                };
-                const response = await fetch('/api/admin/services', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': token },
-                    body: JSON.stringify(serviceData)
-                });
-                if (response.ok) {
-                        closeServiceModal();
-                        loadPage('services');   // <-- replace renderServices(container)
-                        showToast('Service saved', 'success');
-                    } else {
-                        showToast('Error saving service', 'error');
-                    }
-                }
-            
-            function showServiceModal(service = null) {
-                document.getElementById('serviceId').value = service?.id || '';
-                document.getElementById('serviceName').value = service?.name || '';
-                document.getElementById('serviceDescription').value = service?.description || '';
-                document.getElementById('serviceDuration').value = service?.duration_minutes || 30;
-                document.getElementById('serviceBuffer').value = service?.buffer_minutes || 0;
-                document.getElementById('servicePrice').value = service?.price || 0;
-                document.getElementById('serviceActive').checked = service?.is_active !== false;
-                document.getElementById('modalTitle').innerText = service ? 'Edit Service' : 'Add Service';
-                document.getElementById('serviceModal').style.display = 'flex';
+        };
+        
+        container.innerHTML = `
+            <div class="page-header">
+                <h1>Services</h1>
+                <button class="btn-primary" id="addServiceBtn">+ Add Service</button>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="serviceSearch" placeholder="Search by name or description...">
+            </div>
+            <div id="servicesList"></div>
+            <div id="serviceModal" class="modal" style="display:none">
+                <div class="modal-content">
+                    <h2 id="modalTitle">Add Service</h2>
+                    <input type="hidden" id="serviceId">
+                    <div class="form-row"><label>Service Name</label><input id="serviceName" placeholder="e.g., Dental Cleaning"></div>
+                    <div class="form-row"><label>Description</label><textarea id="serviceDescription" rows="3"></textarea></div>
+                    <div class="form-row"><label>Duration (minutes)</label><input id="serviceDuration" type="number" value="30"></div>
+                    <div class="form-row"><label>Buffer (minutes)</label><input id="serviceBuffer" type="number" value="0"></div>
+                    <div class="form-row"><label>Price (${window.currencySymbol})</label><input id="servicePrice" type="number" step="0.01" value="0"></div>
+                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                        <input type="checkbox" id="serviceActive" checked style="margin: 0;">
+                        <label for="serviceActive" style="margin: 0; font-weight: normal;">Active</label>
+                    </div>
+                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                        <button class="btn-secondary" id="closeServiceModal">Cancel</button>
+                        <button class="btn-primary" id="saveServiceBtn">Save</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Initial render
+        renderServiceList(currentServices);
+        
+        // Search functionality
+        document.getElementById('serviceSearch')?.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = allServices.filter(s => 
+                s.name?.toLowerCase().includes(term) || 
+                s.description?.toLowerCase().includes(term)
+            );
+            renderServiceList(filtered);
+        });
+        
+        // Add event listeners for modal
+        document.getElementById('addServiceBtn')?.addEventListener('click', () => showServiceModal());
+        document.getElementById('closeServiceModal')?.addEventListener('click', () => closeServiceModal());
+        document.getElementById('saveServiceBtn')?.addEventListener('click', saveService);
+        
+        async function saveService() {
+            const serviceData = {
+                id: document.getElementById('serviceId').value || null,
+                name: document.getElementById('serviceName').value,
+                description: document.getElementById('serviceDescription').value,
+                duration_minutes: parseInt(document.getElementById('serviceDuration').value),
+                buffer_minutes: parseInt(document.getElementById('serviceBuffer').value),
+                price: parseFloat(document.getElementById('servicePrice').value),
+                is_active: document.getElementById('serviceActive').checked
+            };
+            const response = await fetch('/api/admin/services', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                body: JSON.stringify(serviceData)
+            });
+            if (response.ok) {
+                closeServiceModal();
+                loadPage('services');
+                showToast('Service saved', 'success');
+            } else {
+                showToast('Error saving service', 'error');
             }
-            
-            function closeServiceModal() {
-                document.getElementById('serviceModal').style.display = 'none';
-            }
-            
-            function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
-            
-        } catch (error) {
-            container.innerHTML = '<div class="spinner">Error loading services</div>';
         }
+        
+        function showServiceModal(service = null) {
+            document.getElementById('serviceId').value = service?.id || '';
+            document.getElementById('serviceName').value = service?.name || '';
+            document.getElementById('serviceDescription').value = service?.description || '';
+            document.getElementById('serviceDuration').value = service?.duration_minutes || 30;
+            document.getElementById('serviceBuffer').value = service?.buffer_minutes || 0;
+            document.getElementById('servicePrice').value = service?.price || 0;
+            document.getElementById('serviceActive').checked = service?.is_active !== false;
+            document.getElementById('modalTitle').innerText = service ? 'Edit Service' : 'Add Service';
+            document.getElementById('serviceModal').style.display = 'flex';
+        }
+        
+        function closeServiceModal() {
+            document.getElementById('serviceModal').style.display = 'none';
+        }
+        
+        function escapeHtml(str) { 
+            if (!str) return '';
+            return str.replace(/[&<>]/g, function(m){
+                if(m==='&') return '&amp;'; 
+                if(m==='<') return '&lt;'; 
+                if(m==='>') return '&gt;'; 
+                return m;
+            }); 
+        }
+        
+    } catch (error) {
+        console.error(error);
+        container.innerHTML = '<div class="spinner">Error loading services</div>';
     }
+}
     
     async function loadPage(page) {
         document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
@@ -335,9 +409,9 @@
                 const sampleBh = businessHours.find(h=>h.is_open) || { open_time:'09:00', close_time:'17:00', slot_interval:30 };
                 const slots = []; let cur = sampleBh.open_time;
                 while (cur < sampleBh.close_time) { let end = addMinutes(cur, sampleBh.slot_interval); slots.push({start:cur,end}); cur=end; }
-                let html = '<table class="weekly-table"><thead><tr>';
+                let html = '<table class="weekly-table"><thead></tr>';
                 days.forEach(day => html += `<th>${day.toLocaleDateString(undefined,{weekday:'short', month:'short', day:'numeric'})}</th>`);
-                html += '</tr></thead><tbody>';
+                html += '</thead><tbody>';
                 for (const slot of slots) {
                     html += '<tr>';
                     for (const day of days) {
@@ -368,42 +442,177 @@
             }
         };
 
-        window.selectDateAdmin = (dateStr) => { currentDate = new Date(dateStr); currentView = 'day'; render(); };
-        const changeView = (view) => { currentView = view; render(); };
+        window.selectDateAdmin = (dateStr) => { 
+            const parts = dateStr.split('-');
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const day = parseInt(parts[2]);
+            currentDate = new Date(year, month, day);
+            currentView = 'day'; 
+            render(); 
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.view === 'day') btn.classList.add('active');
+            });
+        };
+
+        const changeView = (view) => { 
+            currentView = view; 
+            render(); 
+            document.querySelectorAll('.view-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.dataset.view === view) btn.classList.add('active');
+            });
+        };
+
         const changeDate = (delta) => {
-            if (currentView === 'month') currentDate.setMonth(currentDate.getMonth()+delta);
-            else if (currentView === 'week') currentDate.setDate(currentDate.getDate()+delta*7);
-            else currentDate.setDate(currentDate.getDate()+delta);
+            if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() + delta);
+            else if (currentView === 'week') currentDate.setDate(currentDate.getDate() + delta * 7);
+            else currentDate.setDate(currentDate.getDate() + delta);
             render();
         };
+
         document.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', () => changeView(btn.dataset.view)));
         document.getElementById('prevBtn').addEventListener('click', () => changeDate(-1));
         document.getElementById('nextBtn').addEventListener('click', () => changeDate(1));
         await render();
-    }
+    }   
 
     async function renderCustomers(container) {
-        const res = await fetch('/api/admin/customers', { headers: { 'Authorization': token } });
-        const data = await res.json();
-        const customers = data.customers || [];
-        container.innerHTML = `
-            <div class="page-header"><h1>Customers</h1></div>
-            <div class="search-bar"><input type="text" id="customerSearch" placeholder="Search..."></div>
-            <div id="customersTable">${renderCustomerTable(customers)}</div>
-        `;
-        document.getElementById('customerSearch').addEventListener('input', (e) => {
-            const term = e.target.value.toLowerCase();
-            const filtered = customers.filter(c => c.name?.toLowerCase().includes(term) || c.email?.toLowerCase().includes(term));
-            document.getElementById('customersTable').innerHTML = renderCustomerTable(filtered);
+    const res = await fetch('/api/admin/customers', { headers: { 'Authorization': token } });
+    const data = await res.json();
+    const allCustomers = data.customers || [];
+    
+    // Define available columns
+    const availableColumns = [
+        { key: 'name', label: 'Name', visible: true },
+        { key: 'email', label: 'Email', visible: true },
+        { key: 'phone', label: 'Phone', visible: true },
+        { key: 'total_bookings', label: 'Bookings', visible: true },
+        { key: 'last_booking_date', label: 'Last Booking', visible: true },
+        { key: 'created_at', label: 'Joined', visible: false }
+    ];
+    
+    let currentCustomers = [...allCustomers];
+    let searchTerm = '';
+    
+    const renderCustomerTable = () => {
+        const tableContainer = document.getElementById('customersTable');
+        const visibleCols = availableColumns.filter(col => col.visible);
+        
+        if (!currentCustomers.length) {
+            tableContainer.innerHTML = '<div class="spinner">No customers found</div>';
+            return;
+        }
+        
+        let html = `<table class="data-table"><thead><tr>`;
+        visibleCols.forEach(col => {
+            html += `<th data-sort="${col.key}" style="cursor: pointer;">${col.label} ↕</th>`;
         });
-    }
-
-    function renderCustomerTable(customers) {
-        if (!customers.length) return '<div>No customers</div>';
-        return `<table class="data-table"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Bookings</th><th>Joined</th></thead><tbody>
-            ${customers.map(c => `<tr><td>${c.name||''}</td><td>${c.email||''}</td><td>${c.phone||''}</td><td>${c.total_bookings||0}</td><td>${c.created_at ? new Date(c.created_at).toLocaleDateString() : ''}</td></tr>`).join('')}
-        </tbody></table>`;
-    }
+        html += `</thead><tbody>`;
+        
+        currentCustomers.forEach(c => {
+            html += `<tr>`;
+            visibleCols.forEach(col => {
+                let value = c[col.key] || '';
+                if (col.key === 'created_at' || col.key === 'last_booking_date') {
+                    value = value ? new Date(value).toLocaleDateString() : '-';
+                }
+                html += `<td>${value}</td>`;
+            });
+            html += `</tr>`;
+        });
+        html += `</tbody></table>`;
+        tableContainer.innerHTML = html;
+        
+        // Add sorting click handlers
+        document.querySelectorAll('#customersTable th').forEach(th => {
+            th.addEventListener('click', () => {
+                const sortKey = th.dataset.sort;
+                if (sortKey) {
+                    currentCustomers.sort((a, b) => {
+                        let valA = a[sortKey] || '';
+                        let valB = b[sortKey] || '';
+                        if (sortKey === 'created_at' || sortKey === 'last_booking_date') {
+                            valA = new Date(valA) || 0;
+                            valB = new Date(valB) || 0;
+                        }
+                        if (valA < valB) return -1;
+                        if (valA > valB) return 1;
+                        return 0;
+                    });
+                    renderCustomerTable();
+                }
+            });
+        });
+    };
+    
+    container.innerHTML = `
+        <div class="page-header"><h1>Customers</h1></div>
+        <div class="search-bar">
+            <input type="text" id="customerSearch" placeholder="Search by name or email..." style="flex:2;">
+            <button id="manageColumnsBtn" class="btn-secondary" style="white-space: nowrap;">Manage Columns</button>
+        </div>
+        <div id="customersTable"></div>
+        
+        <!-- Column Management Modal -->
+        <div id="columnModal" class="modal" style="display:none">
+            <div class="modal-content">
+                <h2>Manage Columns</h2>
+                <div id="columnList"></div>
+                <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px;">
+                    <button class="btn-secondary" id="closeColumnModal">Close</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Render column management toggles
+    const renderColumnToggles = () => {
+        const columnList = document.getElementById('columnList');
+        columnList.innerHTML = availableColumns.map(col => `
+            <div class="form-row" style="display: flex; align-items: center; gap: 10px;">
+                <input type="checkbox" id="col_${col.key}" ${col.visible ? 'checked' : ''} style="width: auto;">
+                <label for="col_${col.key}" style="margin: 0;">${col.label}</label>
+            </div>
+        `).join('');
+        
+        // Add change listeners to toggle column visibility
+        availableColumns.forEach(col => {
+            const checkbox = document.getElementById(`col_${col.key}`);
+            if (checkbox) {
+                checkbox.addEventListener('change', (e) => {
+                    col.visible = e.target.checked;
+                    renderCustomerTable();
+                });
+            }
+        });
+    };
+    
+    // Search functionality
+    document.getElementById('customerSearch').addEventListener('input', (e) => {
+        searchTerm = e.target.value.toLowerCase();
+        currentCustomers = allCustomers.filter(c => 
+            c.name?.toLowerCase().includes(searchTerm) || 
+            c.email?.toLowerCase().includes(searchTerm)
+        );
+        renderCustomerTable();
+    });
+    
+    // Manage columns modal
+    document.getElementById('manageColumnsBtn').addEventListener('click', () => {
+        renderColumnToggles();
+        document.getElementById('columnModal').style.display = 'flex';
+    });
+    
+    document.getElementById('closeColumnModal').addEventListener('click', () => {
+        document.getElementById('columnModal').style.display = 'none';
+    });
+    
+    // Initial render
+    currentCustomers = [...allCustomers];
+    renderCustomerTable();
+}
 
     async function renderSettings(container) {
         const res = await fetch('/api/admin/settings', { headers: { 'Authorization': token } });
@@ -417,6 +626,8 @@
                 <div class="form-row"><label>Email</label><input id="orgEmail" value="${org.email||''}"></div>
                 <div class="form-row"><label>Phone</label><input id="orgPhone" value="${org.phone||''}"></div>
                 <div class="form-row"><label>Address</label><input id="orgAddress" value="${org.address||''}"></div>
+                <div class="form-row"><label>City</label><input id="orgCity" value="${org.city||''}"></div>
+                <div class="form-row"><label>Postcode</label><input id="orgPostcode" value="${org.postcode||''}"></div>
                 <div class="form-row">
                     <label>Currency</label>
                     <select id="orgCurrency">
@@ -465,20 +676,27 @@
         if (linkData.success) document.getElementById('shareLink').value = linkData.link;
         document.getElementById('copyLinkBtn').addEventListener('click', () => { document.getElementById('shareLink').select(); document.execCommand('copy'); showToast('Link copied', 'success'); });
         document.getElementById('saveOrgBtn').addEventListener('click', async () => {
-        const payload = {
-            name: document.getElementById('orgName').value,
-            email: document.getElementById('orgEmail').value,
-            phone: document.getElementById('orgPhone').value,
-            address: document.getElementById('orgAddress').value,
-            currency: document.getElementById('orgCurrency').value
-        };
-            await fetch('/api/admin/settings/organization', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': token }, body: JSON.stringify(payload) });
-            showToast('Organization updated', 'success');
+            const payload = {
+                name: document.getElementById('orgName').value,
+                email: document.getElementById('orgEmail').value,
+                phone: document.getElementById('orgPhone').value,
+                address: document.getElementById('orgAddress').value,
+                city: document.getElementById('orgCity').value,
+                postcode: document.getElementById('orgPostcode').value,
+                currency: document.getElementById('orgCurrency').value
+            };
             
+            // Update global currency symbol before refresh
+            const newCurrency = payload.currency;
+            const currencySymbols = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CAD: 'C$', AUD: 'A$', CHF: 'Fr', CNY: '¥', INR: '₹' };
+            window.currencySymbol = currencySymbols[newCurrency] || '$';
+            
+            await saveWithRefresh('/api/admin/settings/organization', payload, 'Organization updated');
         });
+
         document.getElementById('saveHoursBtn').addEventListener('click', async () => {
             const hoursArray = [];
-            for (let i=0;i<7;i++) {
+            for (let i = 0; i < 7; i++) {
                 hoursArray.push({
                     day_of_week: i,
                     is_open: document.getElementById(`open_${i}`).checked,
@@ -487,8 +705,7 @@
                     slot_interval: 30
                 });
             }
-            await fetch('/api/admin/settings/business-hours', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': token }, body: JSON.stringify({ hours: hoursArray }) });
-            showToast('Business hours saved', 'success');
+            await saveWithRefresh('/api/admin/settings/business-hours', { hours: hoursArray }, 'Business hours saved');
         });
     }
 

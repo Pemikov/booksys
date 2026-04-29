@@ -7,7 +7,7 @@ exports.getSettings = async (req, res) => {
         
         const orgResult = await db.query(
             `SELECT id, name, slug, logo_url, primary_color, timezone, 
-                    max_advance_booking_days, min_notice_hours, address, phone, email, currency
+                    max_advance_booking_days, min_notice_hours, address, city, postcode, phone, email, currency
              FROM organization WHERE id = $1`,
             [orgId]
         );
@@ -106,7 +106,7 @@ exports.updateBusinessHours = async (req, res) => {
 exports.updateOrganization = async (req, res) => {
     try {
         const orgId = req.organizationId;
-        const { name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email, currency } = req.body;
+        const { name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email, currency, city, postcode } = req.body;
         
         await db.query(
             `UPDATE organization 
@@ -119,9 +119,11 @@ exports.updateOrganization = async (req, res) => {
                  address = COALESCE($7, address),
                  phone = COALESCE($8, phone),
                  email = COALESCE($9, email),
-                 currency = COALESCE($10, currency)
-             WHERE id = $11`,
-            [name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email, currency, orgId]
+                 currency = COALESCE($10, currency),
+                 city = COALESCE($11, city),
+                 postcode = COALESCE($12, postcode)
+             WHERE id = $13`,
+            [name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email, currency, city, postcode, orgId]
         );
         
         res.json({ success: true, message: 'Organization updated' });
@@ -137,7 +139,7 @@ exports.getCustomers = async (req, res) => {
         const { search, sort_by = 'created_at', sort_order = 'DESC' } = req.query;
         
         let query = `
-            SELECT c.id, c.name, c.email, c.phone, c.created_at,
+            SELECT c.id, c.name, c.email, c.phone, c.address, c.city, c.postcode, c.created_at,
                    COUNT(b.id) as total_bookings,
                    MAX(b.booking_date) as last_booking_date
             FROM customers c

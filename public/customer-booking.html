@@ -266,11 +266,19 @@
     }
 
     function selectDate(dateStr) {
-        currentDate = new Date(dateStr);
+        // Parse the date string as local date (YYYY-MM-DD)
+        const parts = dateStr.split('-');
+        const year = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1;
+        const day = parseInt(parts[2]);
+        currentDate = new Date(year, month, day);
         currentView = 'day';
         renderCalendar();
-        document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
-        document.querySelector('.view-btn[data-view="day"]')?.classList.add('active');
+        // Update active view button
+        document.querySelectorAll('.view-btn').forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.view === 'day') btn.classList.add('active');
+        });
     }
 
     function changeView(view) {
