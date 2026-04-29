@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 42mFHTDxFg7C7j16MZSfjggGGdCCffLb8AifPLz7knggmUyGqtxSwbdb4WG0fjQ
+\restrict 9IjgSpTdEm13E5RBcY4h2wdna1ugNVwq5t3oKKL8mucNqNrES7gKVRTBSa8OHZy
 
 -- Dumped from database version 18.3 (Debian 18.3-1.pgdg13+1)
 -- Dumped by pg_dump version 18.3 (Debian 18.3-1.pgdg13+1)
@@ -717,6 +717,277 @@ ALTER TABLE ONLY public.time_slots_template ALTER COLUMN id SET DEFAULT nextval(
 
 
 --
+-- Data for Name: admin_users; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.admin_users (id, organization_id, username, password_hash, email, role, created_at, last_login) FROM stdin;
+\.
+
+
+--
+-- Data for Name: blocked_times; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.blocked_times (id, organization_id, blocked_date, start_time, end_time, reason, is_all_day, created_at, updated_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: booking_history; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.booking_history (id, booking_id, changed_by, old_status, new_status, notes, changed_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: bookings; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.bookings (id, organization_id, customer_id, service_id, staff_id, booking_date, start_time, end_time, duration_minutes, customer_name, customer_email, customer_phone, notes, status, created_at, updated_at) FROM stdin;
+1	1	1	1	1	2026-04-30	10:00:00	10:30:00	30	John Customer	john@example.com	\N	\N	confirmed	2026-04-29 11:50:51.556221	2026-04-29 11:50:51.556221
+\.
+
+
+--
+-- Data for Name: business_hours; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.business_hours (id, organization_id, day_of_week, is_open, open_time, close_time, slot_interval, created_at) FROM stdin;
+1	1	1	t	09:00:00	17:00:00	30	2026-04-29 11:50:51.551506
+2	1	2	t	09:00:00	17:00:00	30	2026-04-29 11:50:51.551506
+3	1	3	t	09:00:00	17:00:00	30	2026-04-29 11:50:51.551506
+4	1	4	t	09:00:00	17:00:00	30	2026-04-29 11:50:51.551506
+5	1	5	t	09:00:00	17:00:00	30	2026-04-29 11:50:51.551506
+6	1	6	f	\N	\N	30	2026-04-29 11:50:51.551506
+7	1	0	f	\N	\N	30	2026-04-29 11:50:51.551506
+\.
+
+
+--
+-- Data for Name: customers; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.customers (id, organization_id, name, email, phone, address, postcode, status, created_at) FROM stdin;
+1	1	John Customer	john@example.com	555-0101	456 Oak Ave	\N	active	2026-04-29 11:50:51.544982
+2	1	Jane Client	jane@example.com	555-0102	789 Pine Rd	\N	active	2026-04-29 11:50:51.544982
+\.
+
+
+--
+-- Data for Name: organization; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.organization (id, name, added, address, phone, email, status) FROM stdin;
+1	Sample Business	2026-04-29	123 Main St	555-0100	info@sample.com	active
+\.
+
+
+--
+-- Data for Name: service_assignments; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.service_assignments (staff_id, service_id, is_preferred, created_at) FROM stdin;
+1	1	t	2026-04-29 11:50:51.553575
+1	2	f	2026-04-29 11:50:51.553575
+1	3	f	2026-04-29 11:50:51.553575
+2	1	f	2026-04-29 11:50:51.553575
+2	2	f	2026-04-29 11:50:51.553575
+2	3	f	2026-04-29 11:50:51.553575
+3	1	f	2026-04-29 11:50:51.553575
+3	2	f	2026-04-29 11:50:51.553575
+3	3	f	2026-04-29 11:50:51.553575
+\.
+
+
+--
+-- Data for Name: services; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.services (id, organization_id, name, description, duration_minutes, buffer_minutes, price, color, is_active, created_at) FROM stdin;
+1	1	Consultation	Initial 30-min consultation	30	0	50.00	#3498db	t	2026-04-29 11:50:51.549676
+2	1	Standard Service	One hour standard service	60	0	100.00	#2ecc71	t	2026-04-29 11:50:51.549676
+3	1	Premium Service	90-minute premium service	90	0	150.00	#e74c3c	t	2026-04-29 11:50:51.549676
+\.
+
+
+--
+-- Data for Name: staff; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.staff (id, organization_id, name, email, phone, role, color, is_active, created_at, updated_at) FROM stdin;
+1	1	Alice Manager	alice@sample.com	555-0201	Manager	#3498db	t	2026-04-29 11:50:51.547842	2026-04-29 11:50:51.547842
+2	1	Bob Specialist	bob@sample.com	555-0202	Senior	#2ecc71	t	2026-04-29 11:50:51.547842	2026-04-29 11:50:51.547842
+3	1	Carol Trainee	carol@sample.com	555-0203	Junior	#e74c3c	t	2026-04-29 11:50:51.547842	2026-04-29 11:50:51.547842
+\.
+
+
+--
+-- Data for Name: staff_availability; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.staff_availability (id, staff_id, booking_date, is_available, custom_start_time, custom_end_time, reason, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: time_slots_template; Type: TABLE DATA; Schema: public; Owner: -
+--
+
+COPY public.time_slots_template (id, slot_start, slot_end, duration_minutes) FROM stdin;
+1	00:00:00	00:30:00	30
+2	00:30:00	01:00:00	30
+3	01:00:00	01:30:00	30
+4	01:30:00	02:00:00	30
+5	02:00:00	02:30:00	30
+6	02:30:00	03:00:00	30
+7	03:00:00	03:30:00	30
+8	03:30:00	04:00:00	30
+9	04:00:00	04:30:00	30
+10	04:30:00	05:00:00	30
+11	05:00:00	05:30:00	30
+12	05:30:00	06:00:00	30
+13	06:00:00	06:30:00	30
+14	06:30:00	07:00:00	30
+15	07:00:00	07:30:00	30
+16	07:30:00	08:00:00	30
+17	08:00:00	08:30:00	30
+18	08:30:00	09:00:00	30
+19	09:00:00	09:30:00	30
+20	09:30:00	10:00:00	30
+21	10:00:00	10:30:00	30
+22	10:30:00	11:00:00	30
+23	11:00:00	11:30:00	30
+24	11:30:00	12:00:00	30
+25	12:00:00	12:30:00	30
+26	12:30:00	13:00:00	30
+27	13:00:00	13:30:00	30
+28	13:30:00	14:00:00	30
+29	14:00:00	14:30:00	30
+30	14:30:00	15:00:00	30
+31	15:00:00	15:30:00	30
+32	15:30:00	16:00:00	30
+33	16:00:00	16:30:00	30
+34	16:30:00	17:00:00	30
+35	17:00:00	17:30:00	30
+36	17:30:00	18:00:00	30
+37	18:00:00	18:30:00	30
+38	18:30:00	19:00:00	30
+39	19:00:00	19:30:00	30
+40	19:30:00	20:00:00	30
+41	20:00:00	20:30:00	30
+42	20:30:00	21:00:00	30
+43	21:00:00	21:30:00	30
+44	21:30:00	22:00:00	30
+45	22:00:00	22:30:00	30
+46	22:30:00	23:00:00	30
+47	23:00:00	23:30:00	30
+48	23:30:00	00:00:00	30
+49	00:00:00	00:30:00	30
+50	01:00:00	01:30:00	30
+51	02:00:00	02:30:00	30
+52	03:00:00	03:30:00	30
+53	04:00:00	04:30:00	30
+54	05:00:00	05:30:00	30
+55	06:00:00	06:30:00	30
+56	07:00:00	07:30:00	30
+57	08:00:00	08:30:00	30
+58	09:00:00	09:30:00	30
+59	10:00:00	10:30:00	30
+60	11:00:00	11:30:00	30
+61	12:00:00	12:30:00	30
+62	13:00:00	13:30:00	30
+63	14:00:00	14:30:00	30
+64	15:00:00	15:30:00	30
+65	16:00:00	16:30:00	30
+66	17:00:00	17:30:00	30
+67	18:00:00	18:30:00	30
+68	19:00:00	19:30:00	30
+69	20:00:00	20:30:00	30
+70	21:00:00	21:30:00	30
+71	22:00:00	22:30:00	30
+72	23:00:00	23:30:00	30
+\.
+
+
+--
+-- Name: admin_users_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.admin_users_id_seq', 1, false);
+
+
+--
+-- Name: blocked_times_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.blocked_times_id_seq', 1, false);
+
+
+--
+-- Name: booking_history_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.booking_history_id_seq', 1, false);
+
+
+--
+-- Name: bookings_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.bookings_id_seq', 7, true);
+
+
+--
+-- Name: business_hours_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.business_hours_id_seq', 11, true);
+
+
+--
+-- Name: customers_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.customers_id_seq', 2, true);
+
+
+--
+-- Name: organization_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.organization_id_seq', 1, true);
+
+
+--
+-- Name: services_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.services_id_seq', 1, false);
+
+
+--
+-- Name: staff_availability_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.staff_availability_id_seq', 1, false);
+
+
+--
+-- Name: staff_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.staff_id_seq', 1, false);
+
+
+--
+-- Name: time_slots_template_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
+--
+
+SELECT pg_catalog.setval('public.time_slots_template_id_seq', 72, true);
+
+
+--
 -- Name: admin_users admin_users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1100,5 +1371,5 @@ ALTER TABLE ONLY public.staff
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 42mFHTDxFg7C7j16MZSfjggGGdCCffLb8AifPLz7knggmUyGqtxSwbdb4WG0fjQ
+\unrestrict 9IjgSpTdEm13E5RBcY4h2wdna1ugNVwq5t3oKKL8mucNqNrES7gKVRTBSa8OHZy
 

@@ -1,0 +1,5 @@
+Browser (React/Vue/etc)
+        ↓ HTTP (fetch/axios)
+Node backend (Express / API)
+        ↓ SQL (pg client)
+PostgreSQL (Podman, localhost:5433)
