@@ -5,10 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Dashboard - Booking System</title>
     <style>
+        /* Your existing styles – unchanged */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; min-height: 100vh; }
         .app-container { display: flex; min-height: 100vh; }
-        /* Sidebar */
         .sidebar { width: 280px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white; padding: 30px 0; box-shadow: 2px 0 10px rgba(0,0,0,0.1); }
         .logo { padding: 0 24px 30px 24px; border-bottom: 1px solid rgba(255,255,255,0.1); margin-bottom: 30px; }
         .logo h2 { font-size: 22px; margin-bottom: 5px; }
@@ -18,7 +18,6 @@
         .nav-item:hover { background: rgba(255,255,255,0.1); }
         .nav-item.active { background: #e94560; color: white; }
         .nav-icon { font-size: 20px; width: 28px; }
-        /* Main */
         .main-content { flex: 1; padding: 30px; overflow-y: auto; }
         .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 30px; }
@@ -95,51 +94,47 @@
     let token = localStorage.getItem('adminToken');
     let adminInfo = null;
 
-// Helper: Save with automatic page refresh
-async function saveWithRefresh(url, payload, successMessage) {
-    try {
-        const response = await fetch(url, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json', 'Authorization': token },
-            body: JSON.stringify(payload)
-        });
-        
-        if (response.ok) {
-            // Get current page name
-            const currentPage = document.querySelector('.nav-item.active')?.dataset.page || 'settings';
-            // Reload the current page to show fresh data
-            loadPage(currentPage);
-            showToast(successMessage, 'success');
-        } else {
-            const error = await response.json();
-            showToast(error.error || 'Save failed', 'error');
+    // Helper: Save with automatic page refresh (used in settings)
+    async function saveWithRefresh(url, payload, successMessage) {
+        try {
+            const response = await fetch(url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                body: JSON.stringify(payload)
+            });
+            if (response.ok) {
+                const currentPage = document.querySelector('.nav-item.active')?.dataset.page || 'settings';
+                loadPage(currentPage);
+                showToast(successMessage, 'success');
+            } else {
+                const error = await response.json();
+                showToast(error.error || 'Save failed', 'error');
+            }
+        } catch (error) {
+            showToast('Network error', 'error');
         }
-    } catch (error) {
-        showToast('Network error', 'error');
     }
-}
 
-async function init() {
-    if (!token) { window.location.href = '/admin'; return; }
-    try {
-        const me = await fetch('/api/auth/admin/me', { headers: { 'Authorization': token } });
-        if (!me.ok) throw new Error('Not authenticated');
-        const meData = await me.json();
-        adminInfo = meData.admin;
-        document.getElementById('orgNameSidebar').innerText = adminInfo.organization_name || 'Business';
+    async function init() {
+        if (!token) { window.location.href = '/admin'; return; }
+        try {
+            const me = await fetch('/api/auth/admin/me', { headers: { 'Authorization': token } });
+            if (!me.ok) throw new Error('Not authenticated');
+            const meData = await me.json();
+            adminInfo = meData.admin;
+            document.getElementById('orgNameSidebar').innerText = adminInfo.organization_name || 'Business';
 
-        // Fetch organization settings to get currency
-        const settingsRes = await fetch('/api/admin/settings', { headers: { 'Authorization': token } });
-        const settingsData = await settingsRes.json();
-        const currencyCode = settingsData.organization?.currency || 'USD';
-        const currencySymbols = {
-            USD: '$', EUR: '€', GBP: '£', JPY: '¥', CAD: 'C$', AUD: 'A$', CHF: 'Fr', CNY: '¥', INR: '₹'
-        };
-        window.currencySymbol = currencySymbols[currencyCode] || '$';
+            const settingsRes = await fetch('/api/admin/settings', { headers: { 'Authorization': token } });
+            const settingsData = await settingsRes.json();
+            const currencyCode = settingsData.organization?.currency || 'USD';
+            const currencySymbols = {
+                USD: '$', EUR: '€', GBP: '£', JPY: '¥', CAD: 'C$', AUD: 'A$', CHF: 'Fr', CNY: '¥', INR: '₹'
+            };
+            window.currencySymbol = currencySymbols[currencyCode] || '$';
 
-        loadPage('dashboard');
-    } catch(e) { localStorage.removeItem('adminToken'); window.location.href = '/admin'; }
-}
+            loadPage('dashboard');
+        } catch(e) { localStorage.removeItem('adminToken'); window.location.href = '/admin'; }
+    }
 
     function updateAdminDateTime() {
         const now = new Date();
@@ -149,175 +144,138 @@ async function init() {
     }
     setInterval(updateAdminDateTime, 1000);
 
+    // ===================== SERVICES PAGE =====================
     async function renderServices(container) {
-    try {
-        const res = await fetch('/api/admin/services', { headers: { 'Authorization': token } });
-        const data = await res.json();
-        const allServices = data.services || [];
-        
-        // Store all services in a variable for filtering
-        let currentServices = [...allServices];
-        
-        const renderServiceList = (services) => {
-            const servicesList = document.getElementById('servicesList');
-            if (!servicesList) return;
-            
-            if (services.length === 0) {
-                servicesList.innerHTML = '<div class="spinner">No services found</div>';
-                return;
-            }
-            
-            servicesList.innerHTML = services.map(s => `
-                <div class="settings-section" style="margin-bottom: 15px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h3>${escapeHtml(s.name)} (${s.duration_minutes} min) - ${window.currencySymbol}${s.price}</h3>
-                        <button class="btn-secondary edit-service" data-id="${s.id}">Edit</button>
+        try {
+            const res = await fetch('/api/admin/services', { headers: { 'Authorization': token } });
+            const data = await res.json();
+            const allServices = data.services || [];
+            let currentServices = [...allServices];
+
+            const renderServiceList = (services) => {
+                const servicesList = document.getElementById('servicesList');
+                if (!servicesList) return;
+                if (services.length === 0) {
+                    servicesList.innerHTML = '<div class="spinner">No services found</div>';
+                    return;
+                }
+                servicesList.innerHTML = services.map(s => `
+                    <div class="settings-section" style="margin-bottom: 15px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <h3>${escapeHtml(s.name)} (${s.duration_minutes} min) - ${window.currencySymbol}${s.price}</h3>
+                            <button class="btn-secondary edit-service" data-id="${s.id}">Edit</button>
+                        </div>
+                        <p>${s.description || ''}</p>
                     </div>
-                    <p>${s.description || ''}</p>
-                </div>
-            `).join('');
-            
-            // Re-attach edit event listeners
-            document.querySelectorAll('.edit-service').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const id = btn.dataset.id;
-                    const res = await fetch(`/api/admin/services/${id}`, { headers: { 'Authorization': token } });
-                    const data = await res.json();
-                    if (data.success) showServiceModal(data.service);
+                `).join('');
+                document.querySelectorAll('.edit-service').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const id = btn.dataset.id;
+                        const res = await fetch(`/api/admin/services/${id}`, { headers: { 'Authorization': token } });
+                        const data = await res.json();
+                        if (data.success) showServiceModal(data.service);
+                    });
                 });
-            });
-        };
-        
-        container.innerHTML = `
-            <div class="page-header">
-                <h1>Services</h1>
-                <button class="btn-primary" id="addServiceBtn">+ Add Service</button>
-            </div>
-            <div class="search-bar">
-                <input type="text" id="serviceSearch" placeholder="Search by name or description...">
-            </div>
-            <div id="servicesList"></div>
-            <div id="serviceModal" class="modal" style="display:none">
-                <div class="modal-content">
-                    <h2 id="modalTitle">Add Service</h2>
-                    <input type="hidden" id="serviceId">
-                    <div class="form-row"><label>Service Name</label><input id="serviceName" placeholder="e.g., Dental Cleaning"></div>
-                    <div class="form-row"><label>Description</label><textarea id="serviceDescription" rows="3"></textarea></div>
-                    <div class="form-row"><label>Duration (minutes)</label><input id="serviceDuration" type="number" value="30"></div>
-                    <div class="form-row"><label>Buffer (minutes)</label><input id="serviceBuffer" type="number" value="0"></div>
-                    <div class="form-row"><label>Price (${window.currencySymbol})</label><input id="servicePrice" type="number" step="0.01" value="0"></div>
-                    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
-                        <input type="checkbox" id="serviceActive" checked style="margin: 0;">
-                        <label for="serviceActive" style="margin: 0; font-weight: normal;">Active</label>
-                    </div>
-                    <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                        <button class="btn-secondary" id="closeServiceModal">Cancel</button>
-                        <button class="btn-primary" id="saveServiceBtn">Save</button>
+            };
+
+            container.innerHTML = `
+                <div class="page-header">
+                    <h1>Services</h1>
+                    <button class="btn-primary" id="addServiceBtn">+ Add Service</button>
+                </div>
+                <div class="search-bar">
+                    <input type="text" id="serviceSearch" placeholder="Search by name or description...">
+                </div>
+                <div id="servicesList"></div>
+                <div id="serviceModal" class="modal" style="display:none">
+                    <div class="modal-content">
+                        <h2 id="modalTitle">Add Service</h2>
+                        <input type="hidden" id="serviceId">
+                        <div class="form-row"><label>Service Name</label><input id="serviceName" placeholder="e.g., Dental Cleaning"></div>
+                        <div class="form-row"><label>Description</label><textarea id="serviceDescription" rows="3"></textarea></div>
+                        <div class="form-row"><label>Duration (minutes)</label><input id="serviceDuration" type="number" value="30"></div>
+                        <div class="form-row"><label>Buffer (minutes)</label><input id="serviceBuffer" type="number" value="0"></div>
+                        <div class="form-row"><label>Price (${window.currencySymbol})</label><input id="servicePrice" type="number" step="0.01" value="0"></div>
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+                            <input type="checkbox" id="serviceActive" checked style="margin: 0;">
+                            <label for="serviceActive" style="margin: 0; font-weight: normal;">Active</label>
+                        </div>
+                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                            <button class="btn-secondary" id="closeServiceModal">Cancel</button>
+                            <button class="btn-primary" id="saveServiceBtn">Save</button>
+                        </div>
                     </div>
                 </div>
-            </div>
-        `;
-        
-        // Initial render
-        renderServiceList(currentServices);
-        
-        // Search functionality
-        document.getElementById('serviceSearch')?.addEventListener('input', (e) => {
-            const term = e.target.value.toLowerCase();
-            const filtered = allServices.filter(s => 
-                s.name?.toLowerCase().includes(term) || 
-                s.description?.toLowerCase().includes(term)
-            );
-            renderServiceList(filtered);
-        });
-        
-        // Add event listeners for modal
-        document.getElementById('addServiceBtn')?.addEventListener('click', () => showServiceModal());
-        document.getElementById('closeServiceModal')?.addEventListener('click', () => closeServiceModal());
-        document.getElementById('saveServiceBtn')?.addEventListener('click', saveService);
-        
-        async function saveService() {
-            const serviceData = {
-                id: document.getElementById('serviceId').value || null,
-                name: document.getElementById('serviceName').value,
-                description: document.getElementById('serviceDescription').value,
-                duration_minutes: parseInt(document.getElementById('serviceDuration').value),
-                buffer_minutes: parseInt(document.getElementById('serviceBuffer').value),
-                price: parseFloat(document.getElementById('servicePrice').value),
-                is_active: document.getElementById('serviceActive').checked
-            };
-            const response = await fetch('/api/admin/services', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': token },
-                body: JSON.stringify(serviceData)
+            `;
+
+            renderServiceList(currentServices);
+
+            document.getElementById('serviceSearch')?.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase();
+                const filtered = allServices.filter(s => s.name?.toLowerCase().includes(term) || s.description?.toLowerCase().includes(term));
+                renderServiceList(filtered);
             });
-            if (response.ok) {
-                closeServiceModal();
-                loadPage('services');
-                showToast('Service saved', 'success');
-            } else {
-                showToast('Error saving service', 'error');
+
+            document.getElementById('addServiceBtn')?.addEventListener('click', () => showServiceModal());
+            document.getElementById('closeServiceModal')?.addEventListener('click', () => closeServiceModal());
+            document.getElementById('saveServiceBtn')?.addEventListener('click', saveService);
+
+            async function saveService() {
+                const serviceData = {
+                    id: document.getElementById('serviceId').value || null,
+                    name: document.getElementById('serviceName').value,
+                    description: document.getElementById('serviceDescription').value,
+                    duration_minutes: parseInt(document.getElementById('serviceDuration').value),
+                    buffer_minutes: parseInt(document.getElementById('serviceBuffer').value),
+                    price: parseFloat(document.getElementById('servicePrice').value),
+                    is_active: document.getElementById('serviceActive').checked
+                };
+                const response = await fetch('/api/admin/services', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                    body: JSON.stringify(serviceData)
+                });
+                if (response.ok) {
+                    closeServiceModal();
+                    loadPage('services');
+                    showToast('Service saved', 'success');
+                } else {
+                    showToast('Error saving service', 'error');
+                }
             }
+
+            function showServiceModal(service = null) {
+                document.getElementById('serviceId').value = service?.id || '';
+                document.getElementById('serviceName').value = service?.name || '';
+                document.getElementById('serviceDescription').value = service?.description || '';
+                document.getElementById('serviceDuration').value = service?.duration_minutes || 30;
+                document.getElementById('serviceBuffer').value = service?.buffer_minutes || 0;
+                document.getElementById('servicePrice').value = service?.price || 0;
+                document.getElementById('serviceActive').checked = service?.is_active !== false;
+                document.getElementById('modalTitle').innerText = service ? 'Edit Service' : 'Add Service';
+                document.getElementById('serviceModal').style.display = 'flex';
+            }
+
+            function closeServiceModal() {
+                document.getElementById('serviceModal').style.display = 'none';
+            }
+
+            function escapeHtml(str) {
+                if (!str) return '';
+                return str.replace(/[&<>]/g, function(m){
+                    if(m==='&') return '&amp;';
+                    if(m==='<') return '&lt;';
+                    if(m==='>') return '&gt;';
+                    return m;
+                });
+            }
+        } catch (error) {
+            console.error(error);
+            container.innerHTML = '<div class="spinner">Error loading services</div>';
         }
-        
-        function showServiceModal(service = null) {
-            document.getElementById('serviceId').value = service?.id || '';
-            document.getElementById('serviceName').value = service?.name || '';
-            document.getElementById('serviceDescription').value = service?.description || '';
-            document.getElementById('serviceDuration').value = service?.duration_minutes || 30;
-            document.getElementById('serviceBuffer').value = service?.buffer_minutes || 0;
-            document.getElementById('servicePrice').value = service?.price || 0;
-            document.getElementById('serviceActive').checked = service?.is_active !== false;
-            document.getElementById('modalTitle').innerText = service ? 'Edit Service' : 'Add Service';
-            document.getElementById('serviceModal').style.display = 'flex';
-        }
-        
-        function closeServiceModal() {
-            document.getElementById('serviceModal').style.display = 'none';
-        }
-        
-        function escapeHtml(str) { 
-            if (!str) return '';
-            return str.replace(/[&<>]/g, function(m){
-                if(m==='&') return '&amp;'; 
-                if(m==='<') return '&lt;'; 
-                if(m==='>') return '&gt;'; 
-                return m;
-            }); 
-        }
-        
-    } catch (error) {
-        console.error(error);
-        container.innerHTML = '<div class="spinner">Error loading services</div>';
-    }
-}
-    
-    async function loadPage(page) {
-        document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-        document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
-        const container = document.getElementById('mainContent');
-        container.innerHTML = '<div class="spinner">Loading...</div>';
-        if (page === 'dashboard') await renderDashboard(container);
-        else if (page === 'calendar') await renderCalendar(container);
-        else if (page === 'customers') await renderCustomers(container);
-        else if (page === 'services') await renderServices(container);
-        else if (page === 'settings') await renderSettings(container);
-        else if (page === 'logs') await renderLogs(container);
-        else if (page === 'logout') logout();
     }
 
-    function attachMenuEvents() {
-        document.querySelectorAll('.nav-item').forEach(item => {
-            item.removeEventListener('click', () => {});
-            item.addEventListener('click', (e) => {
-                const page = item.dataset.page;
-                if (page === 'logout') logout();
-                else if (page) loadPage(page);
-            });
-        });
-    }
-    attachMenuEvents();
-
+    // ===================== DASHBOARD PAGE =====================
     async function renderDashboard(container) {
         const [bookingsRes, customersRes] = await Promise.all([
             fetch('/api/admin/bookings', { headers: { 'Authorization': token } }),
@@ -331,11 +289,11 @@ async function init() {
         container.innerHTML = `
             <div class="page-header">
                 <h1>Dashboard</h1>
-                    <div>
-                        <div>Welcome, ${adminInfo.name || 'Admin'}</div>
-                        <div id="adminLiveDateTime" style="font-size: 14px; color: #666; margin-top: 5px;"></div>
-                    </div>
+                <div>
+                    <div>Welcome, ${adminInfo.name || 'Admin'}</div>
+                    <div id="adminLiveDateTime" style="font-size: 14px; color: #666; margin-top: 5px;"></div>
                 </div>
+            </div>
             <div class="stats-grid">
                 <div class="stat-card"><div class="stat-number">${totalBookings}</div><div class="stat-label">Total Bookings</div></div>
                 <div class="stat-card"><div class="stat-number">${confirmed}</div><div class="stat-label">Confirmed</div></div>
@@ -344,295 +302,129 @@ async function init() {
             <div class="settings-section"><h3>Recent Bookings</h3>${renderTable(bookingsData.bookings?.slice(0,5) || [])}</div>
         `;
     }
-
     function renderTable(bookings) {
         if (!bookings.length) return '<div>No bookings</div>';
         return `<table class="data-table"><thead><tr><th>Date</th><th>Time</th><th>Customer</th><th>Status</th></tr></thead><tbody>
-            ${bookings.map(b => `<tr><td>${b.booking_date}</td><td>${b.start_time}-${b.end_time}</td><td>${b.customer_name}</td><td><span class="status-badge status-${b.status}">${b.status}</span></td></tr>`).join('')}
+            ${bookings.map(b => `<tr><td>${b.booking_date}</td>.With${b.start_time}-${b.end_time}</td><td>${b.customer_name}</td><td><span class="status-badge status-${b.status}">${b.status}</span></td></tr>`).join('')}
         </tbody></table>`;
     }
 
-    async function renderCalendar(container) {
-        let currentView = 'month';
-        let currentDate = new Date();
-        let businessHours = [];
-        
-        try {
-            const res = await fetch('/api/admin/settings', { headers: { 'Authorization': token } });
-            const data = await res.json();
-            businessHours = data.business_hours || [];
-        } catch(e) { console.error('Failed to load hours:', e); }
-
-        container.innerHTML = `<div class="page-header"><h1>Calendar</h1><div class="view-selector">
-            <button class="view-btn" data-view="month">Month</button>
-            <button class="view-btn" data-view="week">Week</button>
-            <button class="view-btn" data-view="day">Day</button>
-        </div></div>
-        <div class="calendar-nav"><button class="nav-arrow" id="prevBtn">← Prev</button><span id="calDate" class="current-date"></span><button class="nav-arrow" id="nextBtn">Next →</button></div>
-        <div id="calContainer" class="calendar-view"><div class="spinner">Loading...</div></div>`;
-
-        async function getAvailability(date) {
-            // Use local date string to avoid timezone shift
-            const y = date.getFullYear();
-            const m = String(date.getMonth() + 1).padStart(2,'0');
-            const d = String(date.getDate()).padStart(2,'0');
-            const dateStr = `${y}-${m}-${d}`;
-            const res = await fetch(`/api/admin/availability/${dateStr}`, { headers: { 'Authorization': token } });
-            const data = await res.json();
-            return data.slots || [];
-        }
-        
-        async function renderView() {
-            const calDiv = document.getElementById('calContainer');
-            if (!calDiv) return;
-            const year = currentDate.getFullYear();
-            const month = currentDate.getMonth();
-            
-            if (currentView === 'month') {
-                // Month view (same as before, unchanged)
-                const statsRes = await fetch(`/api/calendar/monthly-stats/${year}/${month+1}?orgId=${adminInfo.organization_id}`, { headers: { 'Authorization': token } });
-                const statsData = await statsRes.json();
-                const statsMap = {};
-                (statsData.stats || []).forEach(s => { statsMap[s.day_date.split('T')[0]] = s; });
-                const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
-                const startWeekday = firstDay.getDay();
-                const daysInMonth = lastDay.getDate();
-                let html = '<div class="month-grid">';
-                ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => html += `<div class="month-day-header">${d}</div>`);
-                for (let i=0; i<startWeekday; i++) html += '<div class="month-day disabled"></div>';
-                for (let d=1; d<=daysInMonth; d++) {
-                    const date = new Date(year, month, d);
-                    const yyyy = date.getFullYear();
-                    const mm = String(date.getMonth()+1).padStart(2,'0');
-                    const dd = String(d).padStart(2,'0');
-                    const dateStr = `${yyyy}-${mm}-${dd}`;
-                    const dow = date.getDay();
-                    const bh = businessHours.find(h => h.day_of_week === dow);
-                    const isOpen = bh?.is_open === true;
-                    const stats = statsMap[dateStr] || {};
-                    const free = stats.free_slots || 0;
-                    const booked = stats.booked_slots || 0;
-                    html += `<div class="month-day ${!isOpen ? 'disabled' : ''}" data-date="${dateStr}" onclick="${isOpen ? `selectDateAdmin('${dateStr}')` : ''}">
-                                <div class="day-number">${d}</div>
-                                <div class="day-stats">${isOpen ? `${free} free / ${booked} booked` : 'Closed'}</div>
-                            </div>`;
-                }
-                html += '</div>';
-                calDiv.innerHTML = html;
-                document.getElementById('calDate').innerText = currentDate.toLocaleDateString('en-US', { month:'long', year:'numeric' });
-            } else if (currentView === 'day') {
-                // Day view with corrected date string
-                const slots = await getAvailability(currentDate);
-                if (!slots || slots.length === 0) {
-                    calDiv.innerHTML = '<div class="spinner">No slots available for this day</div>';
-                    return;
-                }
-                let html = '<table class="weekly-table"><thead><tr><th>Time</th><th>Status</th><th>Staff</th><th>Customer</th></tr></thead><tbody>';
-                for (const slot of slots) {
-                    html += `<tr class="time-slot ${slot.is_available ? 'available' : 'booked'}">
-                                <td>${slot.slot_start} - ${slot.slot_end}</td>
-                                <td>${slot.is_available ? '✅ Available' : '❌ Booked'}</td>
-                                <td>${slot.staff_name || 'Any'}</td>
-                                <td>${slot.customer_name || (slot.is_available ? '' : 'Booked')}</td>
-                            </tr>`;
-                }
-                html += '</tbody></table>';
-                calDiv.innerHTML = html;
-                document.getElementById('calDate').innerText = currentDate.toLocaleDateString();
-            } else if (currentView === 'week') {
-                // Week view with corrected date strings
-                const startOfWeek = new Date(currentDate);
-                startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
-                const days = [];
-                for (let i=0; i<7; i++) {
-                    const day = new Date(startOfWeek);
-                    day.setDate(startOfWeek.getDate() + i);
-                    days.push(day);
-                }
-                let html = '<table class="weekly-table"><thead><tr>';
-                for (const day of days) {
-                    html += `<th>${day.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}</th>`;
-                }
-                html += '</thead><tbody><tr>';
-                for (const day of days) {
-                    const slots = await getAvailability(day);
-                    const availableCount = slots.filter(s => s.is_available).length;
-                    const totalCount = slots.length;
-                    html += `<td style="text-align:center; vertical-align:middle;">${totalCount > 0 ? `${availableCount} / ${totalCount} slots free` : 'Closed'}</td>`;
-                }
-                html += '</tr></tbody></table>';
-                calDiv.innerHTML = html;
-                document.getElementById('calDate').innerText = `Week of ${startOfWeek.toLocaleDateString()}`;
-            }
-        }
-        
-        window.selectDateAdmin = (dateStr) => {
-            const parts = dateStr.split('-');
-            currentDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
-            currentView = 'day';
-            renderView();
-            document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelector('.view-btn[data-view="day"]')?.classList.add('active');
-        };
-        
-        const changeView = (view) => {
-            currentView = view;
-            renderView();
-            document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
-            document.querySelector(`.view-btn[data-view="${view}"]`)?.classList.add('active');
-        };
-        
-        const changeDate = (delta) => {
-            if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() + delta);
-            else if (currentView === 'week') currentDate.setDate(currentDate.getDate() + delta * 7);
-            else currentDate.setDate(currentDate.getDate() + delta);
-            renderView();
-        };
-        
-        document.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', () => changeView(btn.dataset.view)));
-        document.getElementById('prevBtn').addEventListener('click', () => changeDate(-1));
-        document.getElementById('nextBtn').addEventListener('click', () => changeDate(1));
-        
-        await renderView();
-    }
-
+    // ===================== CUSTOMERS PAGE =====================
     async function renderCustomers(container) {
-    const res = await fetch('/api/admin/customers', { headers: { 'Authorization': token } });
-    const data = await res.json();
-    const allCustomers = data.customers || [];
-    
-    // Define available columns
-    const availableColumns = [
-        { key: 'name', label: 'Name', visible: true },
-        { key: 'email', label: 'Email', visible: true },
-        { key: 'phone', label: 'Phone', visible: true },
-        { key: 'total_bookings', label: 'Bookings', visible: true },
-        { key: 'last_booking_date', label: 'Last Booking', visible: true },
-        { key: 'created_at', label: 'Joined', visible: false }
-    ];
-    
-    let currentCustomers = [...allCustomers];
-    let searchTerm = '';
-    
-    const renderCustomerTable = () => {
-        const tableContainer = document.getElementById('customersTable');
-        const visibleCols = availableColumns.filter(col => col.visible);
-        
-        if (!currentCustomers.length) {
-            tableContainer.innerHTML = '<div class="spinner">No customers found</div>';
-            return;
-        }
-        
-        let html = `<table class="data-table"><thead><tr>`;
-        visibleCols.forEach(col => {
-            html += `<th data-sort="${col.key}" style="cursor: pointer;">${col.label} ↕</th>`;
-        });
-        html += `</thead><tbody>`;
-        
-        currentCustomers.forEach(c => {
-            html += `<tr>`;
+        const res = await fetch('/api/admin/customers', { headers: { 'Authorization': token } });
+        const data = await res.json();
+        const allCustomers = data.customers || [];
+        const availableColumns = [
+            { key: 'name', label: 'Name', visible: true },
+            { key: 'email', label: 'Email', visible: true },
+            { key: 'phone', label: 'Phone', visible: true },
+            { key: 'total_bookings', label: 'Bookings', visible: true },
+            { key: 'last_booking_date', label: 'Last Booking', visible: true },
+            { key: 'created_at', label: 'Joined', visible: false }
+        ];
+        let currentCustomers = [...allCustomers];
+        let searchTerm = '';
+
+        const renderCustomerTable = () => {
+            const tableContainer = document.getElementById('customersTable');
+            const visibleCols = availableColumns.filter(col => col.visible);
+            if (!currentCustomers.length) {
+                tableContainer.innerHTML = '<div class="spinner">No customers found</div>';
+                return;
+            }
+            let html = `<table class="data-table"><thead><tr>`;
             visibleCols.forEach(col => {
-                let value = c[col.key] || '';
-                if (col.key === 'created_at' || col.key === 'last_booking_date') {
-                    value = value ? new Date(value).toLocaleDateString() : '-';
-                }
-                html += `<td>${value}</td>`;
+                html += `<th data-sort="${col.key}" style="cursor: pointer;">${col.label} ↕</th>`;
             });
-            html += `</tr>`;
-        });
-        html += `</tbody></table>`;
-        tableContainer.innerHTML = html;
-        
-        // Add sorting click handlers
-        document.querySelectorAll('#customersTable th').forEach(th => {
-            th.addEventListener('click', () => {
-                const sortKey = th.dataset.sort;
-                if (sortKey) {
-                    currentCustomers.sort((a, b) => {
-                        let valA = a[sortKey] || '';
-                        let valB = b[sortKey] || '';
-                        if (sortKey === 'created_at' || sortKey === 'last_booking_date') {
-                            valA = new Date(valA) || 0;
-                            valB = new Date(valB) || 0;
-                        }
-                        if (valA < valB) return -1;
-                        if (valA > valB) return 1;
-                        return 0;
-                    });
-                    renderCustomerTable();
-                }
+            html += `</thead><tbody>`;
+            currentCustomers.forEach(c => {
+                html += `<tr>`;
+                visibleCols.forEach(col => {
+                    let value = c[col.key] || '';
+                    if (col.key === 'created_at' || col.key === 'last_booking_date') {
+                        value = value ? new Date(value).toLocaleDateString() : '-';
+                    }
+                    html += `<td>${value}</td>`;
+                });
+                html += `</tr>`;
             });
-        });
-    };
-    
-    container.innerHTML = `
-        <div class="page-header"><h1>Customers</h1></div>
-        <div class="search-bar">
-            <input type="text" id="customerSearch" placeholder="Search by name or email..." style="flex:2;">
-            <button id="manageColumnsBtn" class="btn-secondary" style="white-space: nowrap;">Manage Columns</button>
-        </div>
-        <div id="customersTable"></div>
-        
-        <!-- Column Management Modal -->
-        <div id="columnModal" class="modal" style="display:none">
-            <div class="modal-content">
-                <h2>Manage Columns</h2>
-                <div id="columnList"></div>
-                <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px;">
-                    <button class="btn-secondary" id="closeColumnModal">Close</button>
+            html += `</tbody></table>`;
+            tableContainer.innerHTML = html;
+
+            document.querySelectorAll('#customersTable th').forEach(th => {
+                th.addEventListener('click', () => {
+                    const sortKey = th.dataset.sort;
+                    if (sortKey) {
+                        currentCustomers.sort((a, b) => {
+                            let valA = a[sortKey] || '';
+                            let valB = b[sortKey] || '';
+                            if (sortKey === 'created_at' || sortKey === 'last_booking_date') {
+                                valA = new Date(valA) || 0;
+                                valB = new Date(valB) || 0;
+                            }
+                            if (valA < valB) return -1;
+                            if (valA > valB) return 1;
+                            return 0;
+                        });
+                        renderCustomerTable();
+                    }
+                });
+            });
+        };
+        container.innerHTML = `
+            <div class="page-header"><h1>Customers</h1></div>
+            <div class="search-bar">
+                <input type="text" id="customerSearch" placeholder="Search by name or email..." style="flex:2;">
+                <button id="manageColumnsBtn" class="btn-secondary" style="white-space: nowrap;">Manage Columns</button>
+            </div>
+            <div id="customersTable"></div>
+            <div id="columnModal" class="modal" style="display:none">
+                <div class="modal-content">
+                    <h2>Manage Columns</h2>
+                    <div id="columnList"></div>
+                    <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px;">
+                        <button class="btn-secondary" id="closeColumnModal">Close</button>
+                    </div>
                 </div>
             </div>
-        </div>
-    `;
-    
-    // Render column management toggles
-    const renderColumnToggles = () => {
-        const columnList = document.getElementById('columnList');
-        columnList.innerHTML = availableColumns.map(col => `
-            <div class="form-row" style="display: flex; align-items: center; gap: 10px;">
-                <input type="checkbox" id="col_${col.key}" ${col.visible ? 'checked' : ''} style="width: auto;">
-                <label for="col_${col.key}" style="margin: 0;">${col.label}</label>
-            </div>
-        `).join('');
-        
-        // Add change listeners to toggle column visibility
-        availableColumns.forEach(col => {
-            const checkbox = document.getElementById(`col_${col.key}`);
-            if (checkbox) {
-                checkbox.addEventListener('change', (e) => {
-                    col.visible = e.target.checked;
-                    renderCustomerTable();
-                });
-            }
-        });
-    };
-    
-    // Search functionality
-    document.getElementById('customerSearch').addEventListener('input', (e) => {
-        searchTerm = e.target.value.toLowerCase();
-        currentCustomers = allCustomers.filter(c => 
-            c.name?.toLowerCase().includes(searchTerm) || 
-            c.email?.toLowerCase().includes(searchTerm)
-        );
-        renderCustomerTable();
-    });
-    
-    // Manage columns modal
-    document.getElementById('manageColumnsBtn').addEventListener('click', () => {
-        renderColumnToggles();
-        document.getElementById('columnModal').style.display = 'flex';
-    });
-    
-    document.getElementById('closeColumnModal').addEventListener('click', () => {
-        document.getElementById('columnModal').style.display = 'none';
-    });
-    
-    // Initial render
-    currentCustomers = [...allCustomers];
-    renderCustomerTable();
-}
+        `;
 
+        const renderColumnToggles = () => {
+            const columnList = document.getElementById('columnList');
+            columnList.innerHTML = availableColumns.map(col => `
+                <div class="form-row" style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="col_${col.key}" ${col.visible ? 'checked' : ''} style="width: auto;">
+                    <label for="col_${col.key}" style="margin: 0;">${col.label}</label>
+                </div>
+            `).join('');
+            availableColumns.forEach(col => {
+                const checkbox = document.getElementById(`col_${col.key}`);
+                if (checkbox) {
+                    checkbox.addEventListener('change', (e) => {
+                        col.visible = e.target.checked;
+                        renderCustomerTable();
+                    });
+                }
+            });
+        };
+
+        document.getElementById('customerSearch').addEventListener('input', (e) => {
+            searchTerm = e.target.value.toLowerCase();
+            currentCustomers = allCustomers.filter(c => c.name?.toLowerCase().includes(searchTerm) || c.email?.toLowerCase().includes(searchTerm));
+            renderCustomerTable();
+        });
+        document.getElementById('manageColumnsBtn').addEventListener('click', () => {
+            renderColumnToggles();
+            document.getElementById('columnModal').style.display = 'flex';
+        });
+        document.getElementById('closeColumnModal').addEventListener('click', () => {
+            document.getElementById('columnModal').style.display = 'none';
+        });
+        currentCustomers = [...allCustomers];
+        renderCustomerTable();
+    }
+
+    // ===================== SETTINGS PAGE =====================
     async function renderSettings(container) {
         const res = await fetch('/api/admin/settings', { headers: { 'Authorization': token } });
         const data = await res.json();
@@ -670,7 +462,7 @@ async function init() {
                 <div style="display:flex; gap:10px;"><input id="shareLink" readonly style="flex:1"><button id="copyLinkBtn" class="btn-secondary">Copy</button></div>
             </div>
         `;
-        // Populate hours
+
         const hoursGrid = document.getElementById('hoursGrid');
         const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
         for (let i=0;i<7;i++) {
@@ -689,7 +481,7 @@ async function init() {
                 document.getElementById(`close_time_${i}`).disabled = disabled;
             });
         }
-        // Load shareable link
+
         const linkRes = await fetch('/api/admin/settings/shareable-link', { headers: { 'Authorization': token } });
         const linkData = await linkRes.json();
         if (linkData.success) document.getElementById('shareLink').value = linkData.link;
@@ -704,15 +496,11 @@ async function init() {
                 postcode: document.getElementById('orgPostcode').value,
                 currency: document.getElementById('orgCurrency').value
             };
-            
-            // Update global currency symbol before refresh
             const newCurrency = payload.currency;
             const currencySymbols = { USD: '$', EUR: '€', GBP: '£', JPY: '¥', CAD: 'C$', AUD: 'A$', CHF: 'Fr', CNY: '¥', INR: '₹' };
             window.currencySymbol = currencySymbols[newCurrency] || '$';
-            
             await saveWithRefresh('/api/admin/settings/organization', payload, 'Organization updated');
         });
-
         document.getElementById('saveHoursBtn').addEventListener('click', async () => {
             const hoursArray = [];
             for (let i = 0; i < 7; i++) {
@@ -728,8 +516,8 @@ async function init() {
         });
     }
 
+    // ===================== LOGS PAGE =====================
     async function renderLogs(container) {
-        // Simple audit log from booking_history
         const res = await fetch('/api/admin/bookings', { headers: { 'Authorization': token } });
         const data = await res.json();
         const bookings = data.bookings || [];
@@ -741,11 +529,332 @@ async function init() {
         if (!logs.length) container.innerHTML += '<div class="spinner">No logs yet</div>';
     }
 
-    function addMinutes(time, minutes) { let [h,m]=time.split(':'); let d=new Date(); d.setHours(parseInt(h),parseInt(m)); d.setMinutes(d.getMinutes()+minutes); return d.toTimeString().slice(0,5); }
-    function showToast(msg, type) { let t=document.createElement('div'); t.className=`toast ${type}`; t.innerText=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),3000); }
-    async function logout() { await fetch('/api/auth/admin/logout', { method: 'POST', headers: { 'Authorization': token } }); localStorage.clear(); window.location.href='/admin'; }
+    // ===================== PAGE LOADER =====================
+    async function loadPage(page) {
+        document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+        document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
+        const container = document.getElementById('mainContent');
+        container.innerHTML = '<div class="spinner">Loading...</div>';
+        if (page === 'dashboard') await renderDashboard(container);
+        else if (page === 'calendar') await renderCalendar(container);
+        else if (page === 'customers') await renderCustomers(container);
+        else if (page === 'services') await renderServices(container);
+        else if (page === 'settings') await renderSettings(container);
+        else if (page === 'logs') await renderLogs(container);
+        else if (page === 'logout') logout();
+    }
 
+    function attachMenuEvents() {
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                const page = item.dataset.page;
+                if (page === 'logout') logout();
+                else if (page) loadPage(page);
+            });
+        });
+    }
+    attachMenuEvents();
+
+    // ===================== CALENDAR (FIXED) =====================
+    async function renderCalendar(container) {
+        let currentView = 'month';
+        let currentDate = new Date();
+        let businessHours = [];
+
+        try {
+            const res = await fetch('/api/admin/settings', { headers: { 'Authorization': token } });
+            const data = await res.json();
+            businessHours = data.business_hours || [];
+        } catch(e) { console.error('Failed to load hours:', e); }
+
+        container.innerHTML = `<div class="page-header"><h1>Calendar</h1><div class="view-selector">
+            <button class="view-btn" data-view="month">Month</button>
+            <button class="view-btn" data-view="week">Week</button>
+            <button class="view-btn" data-view="day">Day</button>
+        </div></div>
+        <div class="calendar-nav"><button class="nav-arrow" id="prevBtn">← Prev</button><span id="calDate" class="current-date"></span><button class="nav-arrow" id="nextBtn">Next →</button></div>
+        <div id="calContainer" class="calendar-view"><div class="spinner">Loading...</div></div>`;
+
+        async function getAvailability(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2,'0');
+            const d = String(date.getDate()).padStart(2,'0');
+            const dateStr = `${y}-${m}-${d}`;
+            const res = await fetch(`/api/admin/availability/${dateStr}`, { headers: { 'Authorization': token } });
+            const data = await res.json();
+            return data.slots || [];
+        }
+
+        async function renderView() {
+            const calDiv = document.getElementById('calContainer');
+            if (!calDiv) return;
+            const year = currentDate.getFullYear();
+            const month = currentDate.getMonth();
+
+            if (currentView === 'month') {
+                const statsRes = await fetch(`/api/calendar/monthly-stats/${year}/${month+1}?orgId=${adminInfo.organization_id}`, { headers: { 'Authorization': token } });
+                const statsData = await statsRes.json();
+                const statsMap = {};
+                (statsData.stats || []).forEach(s => { statsMap[s.day_date.split('T')[0]] = s; });
+
+                const firstDay = new Date(year, month, 1);
+                const lastDay = new Date(year, month + 1, 0);
+                const startWeekday = firstDay.getDay();
+                const daysInMonth = lastDay.getDate();
+
+                let html = '<div class="month-grid">';
+                ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => html += `<div class="month-day-header">${d}</div>`);
+                for (let i=0; i<startWeekday; i++) html += '<div class="month-day disabled"></div>';
+
+                for (let d=1; d<=daysInMonth; d++) {
+                    const date = new Date(year, month, d);
+                    const statsKey = date.toISOString().split('T')[0];
+                    const localYear = date.getFullYear();
+                    const localMonth = String(date.getMonth()+1).padStart(2,'0');
+                    const localDay = String(date.getDate()).padStart(2,'0');
+                    const localDateStr = `${localYear}-${localMonth}-${localDay}`;
+                    const stats = statsMap[statsKey] || {};
+                    const free = stats.free_slots || 0;
+                    const booked = stats.booked_slots || 0;
+                    const dow = date.getDay();
+                    const bh = businessHours.find(h => h.day_of_week === dow);
+                    const isOpen = bh?.is_open === true;
+
+                    html += `<div class="month-day ${!isOpen ? 'disabled' : ''}" data-date="${localDateStr}" onclick="${isOpen ? `selectDateAdmin('${localDateStr}')` : ''}">
+                                <div class="day-number">${d}</div>
+                                <div class="day-stats">${isOpen ? `${free} free / ${booked} booked` : 'Closed'}</div>
+                            </div>`;
+                }
+                html += '</div>';
+                calDiv.innerHTML = html;
+                document.getElementById('calDate').innerText = currentDate.toLocaleDateString('en-US', { month:'long', year:'numeric' });
+            } else if (currentView === 'day') {
+                const slots = await getAvailability(currentDate);
+                if (!slots || slots.length === 0) {
+                    calDiv.innerHTML = '<div class="spinner">No slots available for this day</div>';
+                    return;
+                }
+                let html = `<table class="weekly-table" style="width:100%; border-collapse:collapse;">
+                    <thead><tr><th style="width:25%">Time</th><th style="width:15%">Status</th><th style="width:25%">Staff</th><th style="width:25%">Customer</th><th style="width:10%">Action</th></tr></thead><tbody>`;
+                for (const slot of slots) {
+                    const isAvail = slot.is_available;
+                    const customerName = slot.customer_name || '';
+                    const shortCustomer = customerName.length > 20 ? customerName.substring(0,18)+'…' : customerName;
+                    const year = currentDate.getFullYear();
+                    const month = String(currentDate.getMonth() + 1).padStart(2,'0');
+                    const day = String(currentDate.getDate()).padStart(2,'0');
+                    const localDateStr = `${year}-${month}-${day}`;
+                    html += `<tr style="border-bottom:1px solid #ddd;">
+                        <td style="padding:8px;">${slot.slot_start} - ${slot.slot_end}</td>
+                        <td style="padding:8px;">${isAvail ? '✅ Available' : '❌ Booked'}</td>
+                        <td style="padding:8px;">${slot.staff_name || 'Any'}</td>
+                        <td style="padding:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${customerName}">${shortCustomer}</td>
+                        <td style="padding:8px;">
+                            ${isAvail ? 
+                                `<button class="btn-sm btn-primary" onclick="openAdminBookingModal('${localDateStr}','${slot.slot_start}','${slot.slot_end}')">Book</button>` : 
+                                `<button class="btn-sm btn-danger" onclick="adminCancelBooking(${slot.booking_id})">Cancel</button>`
+                            }
+                        </td>
+                    </tr>`;
+                }
+                html += '</tbody></table>';
+                calDiv.innerHTML = html;
+                document.getElementById('calDate').innerText = currentDate.toLocaleDateString();
+            } else if (currentView === 'week') {
+                const startOfWeek = new Date(currentDate);
+                startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+                const days = [];
+                for (let i=0; i<7; i++) {
+                    const day = new Date(startOfWeek);
+                    day.setDate(startOfWeek.getDate() + i);
+                    days.push(day);
+                }
+                let html = '<table class="weekly-table"><thead><tr>';
+                for (const day of days) {
+                    html += `<th>${day.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}</th>`;
+                }
+                html += '</tr></thead><tbody></tr>';
+                for (const day of days) {
+                    const slots = await getAvailability(day);
+                    const availableCount = slots.filter(s => s.is_available).length;
+                    const totalCount = slots.length;
+                    html += `<td style="text-align:center; vertical-align:middle;">${totalCount > 0 ? `${availableCount} / ${totalCount} slots free` : 'Closed'}</td>`;
+                }
+                html += '</tr></tbody></table>';
+                calDiv.innerHTML = html;
+                document.getElementById('calDate').innerText = `Week of ${startOfWeek.toLocaleDateString()}`;
+            }
+        }
+
+        window.selectDateAdmin = (dateStr) => {
+            const parts = dateStr.split('-');
+            currentDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            currentView = 'day';
+            renderView();
+            document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector('.view-btn[data-view="day"]')?.classList.add('active');
+        };
+
+        const changeView = (view) => {
+            currentView = view;
+            renderView();
+            document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelector(`.view-btn[data-view="${view}"]`)?.classList.add('active');
+        };
+
+        const changeDate = (delta) => {
+            if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() + delta);
+            else if (currentView === 'week') currentDate.setDate(currentDate.getDate() + delta * 7);
+            else currentDate.setDate(currentDate.getDate() + delta);
+            renderView();
+        };
+
+        document.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', () => changeView(btn.dataset.view)));
+        document.getElementById('prevBtn').addEventListener('click', () => changeDate(-1));
+        document.getElementById('nextBtn').addEventListener('click', () => changeDate(1));
+
+        await renderView();
+    }
+
+    // ===================== ADMIN BOOKING MODAL =====================
+    async function loadAdminBookingOptions() {
+        const [servicesRes, staffRes] = await Promise.all([
+            fetch('/api/admin/services', { headers: { 'Authorization': token } }),
+            fetch('/api/admin/staff', { headers: { 'Authorization': token } })
+        ]);
+        const servicesData = await servicesRes.json();
+        const staffData = await staffRes.json();
+        const serviceSelect = document.getElementById('adminBookingService');
+        const staffSelect = document.getElementById('adminBookingStaff');
+        if (serviceSelect) {
+            serviceSelect.innerHTML = '<option value="">Select a service</option>' +
+                (servicesData.services || []).map(s => `<option value="${s.id}">${s.name} (${s.duration_minutes} min - ${window.currencySymbol}${s.price})</option>`).join('');
+        }
+        if (staffSelect) {
+            staffSelect.innerHTML = '<option value="">Any staff</option>' +
+                (staffData.staff || []).map(s => `<option value="${s.id}">${s.name} - ${s.role}</option>`).join('');
+        }
+    }
+
+    function openAdminBookingModal(date, start, end) {
+        document.getElementById('adminBookingDate').value = date;
+        document.getElementById('adminBookingStart').value = start;
+        document.getElementById('adminBookingEnd').value = end;
+        document.getElementById('adminBookingName').value = '';
+        document.getElementById('adminBookingEmail').value = '';
+        document.getElementById('adminBookingPhone').value = '';
+        loadAdminBookingOptions();
+        document.getElementById('adminBookingModal').style.display = 'flex';
+    }
+
+    function closeAdminBookingModal() {
+        document.getElementById('adminBookingModal').style.display = 'none';
+    }
+
+    async function submitAdminBooking() {
+        const date = document.getElementById('adminBookingDate').value;
+        const start = document.getElementById('adminBookingStart').value;
+        const end = document.getElementById('adminBookingEnd').value;
+        const name = document.getElementById('adminBookingName').value;
+        const email = document.getElementById('adminBookingEmail').value;
+        const phone = document.getElementById('adminBookingPhone').value;
+        const serviceId = document.getElementById('adminBookingService').value;
+        const staffId = document.getElementById('adminBookingStaff').value;
+
+        if (!name || !email) {
+            showToast('Name and email are required', 'error');
+            return;
+        }
+
+        const payload = {
+            organization_id: adminInfo.organization_id,
+            customer_name: name,
+            customer_email: email,
+            customer_phone: phone,
+            booking_date: date,
+            start_time: start,
+            end_time: end,
+            service_id: serviceId || null,
+            staff_id: staffId || null
+        };
+
+        const res = await fetch('/api/calendar/bookings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': token },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Booking confirmed', 'success');
+            closeAdminBookingModal();
+            // Refresh the calendar
+            const container = document.getElementById('mainContent');
+            renderCalendar(container);
+        } else {
+            showToast(data.error || 'Booking failed', 'error');
+        }
+    }
+
+    async function adminCancelBooking(bookingId) {
+        if (!confirm('Are you sure you want to cancel this booking?')) return;
+        const res = await fetch(`/api/admin/bookings/${bookingId}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': token },
+            body: JSON.stringify({ status: 'cancelled' })
+        });
+        if (res.ok) {
+            showToast('Booking cancelled', 'success');
+            const container = document.getElementById('mainContent');
+            renderCalendar(container);
+        } else {
+            showToast('Error cancelling', 'error');
+        }
+    }
+
+    // Attach modal event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+        const closeBtn = document.getElementById('closeAdminBookingModal');
+        const confirmBtn = document.getElementById('confirmAdminBookingBtn');
+        if (closeBtn) closeBtn.addEventListener('click', closeAdminBookingModal);
+        if (confirmBtn) confirmBtn.addEventListener('click', submitAdminBooking);
+    });
+
+    function showToast(msg, type) {
+        let t = document.createElement('div');
+        t.className = `toast ${type}`;
+        t.innerText = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 3000);
+    }
+
+    async function logout() {
+        await fetch('/api/auth/admin/logout', { method: 'POST', headers: { 'Authorization': token } });
+        localStorage.clear();
+        window.location.href = '/admin';
+    }
+
+    // Start the application
     init();
 </script>
+
+<!-- Booking Modal (Admin) -->
+<div id="adminBookingModal" class="modal" style="display:none">
+    <div class="modal-content">
+        <h2 id="adminBookingModalTitle">Book Appointment</h2>
+        <input type="hidden" id="adminBookingDate">
+        <input type="hidden" id="adminBookingStart">
+        <input type="hidden" id="adminBookingEnd">
+        <div class="form-row"><label>Customer Name *</label><input type="text" id="adminBookingName"></div>
+        <div class="form-row"><label>Customer Email *</label><input type="email" id="adminBookingEmail"></div>
+        <div class="form-row"><label>Customer Phone</label><input type="tel" id="adminBookingPhone"></div>
+        <div class="form-row"><label>Service</label><select id="adminBookingService"></select></div>
+        <div class="form-row"><label>Staff</label><select id="adminBookingStaff"></select></div>
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button class="btn-secondary" id="closeAdminBookingModal">Cancel</button>
+            <button class="btn-primary" id="confirmAdminBookingBtn">Confirm Booking</button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>

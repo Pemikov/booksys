@@ -184,7 +184,7 @@
                 if (data.success) {
                     localStorage.setItem('adminToken', data.token);
                     localStorage.setItem('adminInfo', JSON.stringify(data.admin));
-                    window.location.href = '/admin/dashboard';
+                    window.location.replace('/admin/dashboard');
                 } else {
                     errorMessage.textContent = data.error || 'Login failed';
                     errorMessage.style.display = 'block';
