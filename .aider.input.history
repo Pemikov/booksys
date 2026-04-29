@@ -1,0 +1,24 @@
+
+# 2026-04-29 10:35:10.184130
++y
+
+# 2026-04-29 10:41:58.758615
++check structure and file and code and report back what you found
+
+# 2026-04-29 10:42:19.404686
++aider --list-models openrouter/
+
+# 2026-04-29 10:42:28.982647
++exit
+
+# 2026-04-29 10:42:57.862819
++check folder strucutre, files and code inside of them and report back what you found
+
+# 2026-04-29 10:44:13.927734
++n
+
+# 2026-04-29 10:44:19.006992
++y
+
+# 2026-04-29 10:48:54.278813
++git status

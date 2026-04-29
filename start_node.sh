@@ -1,0 +1,1 @@
+kill -9 $(lsof -ti :3000) 2>/dev/null; cd /mnt/d/Work/bookingsystem && node src/config/server.js

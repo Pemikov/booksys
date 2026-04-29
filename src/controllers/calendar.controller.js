@@ -27,6 +27,57 @@ exports.getAvailableSlots = async (req, res) => {
     }
 };
 
+// Get weekly calendar view
+exports.getWeeklyCalendar = async (req, res) => {
+    try {
+        const { start_date } = req.params;
+        const organizationId = req.query.orgId || 1;
+        
+        const endDate = new Date(start_date);
+        endDate.setDate(endDate.getDate() + 7);
+        const end_date = endDate.toISOString().split('T')[0];
+        
+        const result = await db.query(
+            `SELECT 
+                booking_date,
+                start_time,
+                end_time,
+                customer_name,
+                service_id,
+                staff_id,
+                status,
+                id as booking_id
+             FROM bookings
+             WHERE organization_id = $1
+                AND booking_date BETWEEN $2 AND $3
+                AND status NOT IN ('cancelled')
+             ORDER BY booking_date, start_time`,
+            [organizationId, start_date, end_date]
+        );
+        
+        const groupedByDate = {};
+        result.rows.forEach(booking => {
+            if (!groupedByDate[booking.booking_date]) {
+                groupedByDate[booking.booking_date] = [];
+            }
+            groupedByDate[booking.booking_date].push(booking);
+        });
+        
+        res.json({
+            success: true,
+            start_date: start_date,
+            end_date: end_date,
+            bookings: groupedByDate
+        });
+    } catch (error) {
+        console.error('Error getting weekly calendar:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message 
+        });
+    }
+};
+
 // Create a new booking
 exports.createBooking = async (req, res) => {
     const client = await db.getClient();
@@ -47,7 +98,6 @@ exports.createBooking = async (req, res) => {
             notes
         } = req.body;
         
-        // Validate required fields
         if (!customer_name || !customer_email || !booking_date || !start_time || !end_time) {
             return res.status(400).json({ 
                 success: false, 
@@ -191,7 +241,18 @@ exports.getStaff = async (req, res) => {
     }
 };
 
-// ========== NEW FUNCTIONS ==========
+// Get business hours
+exports.getBusinessHours = async (req, res) => {
+    try {
+        const organizationId = req.query.orgId || 1;
+        
+        const result = await db.query('SELECT * FROM get_business_hours($1)', [organizationId]);
+        
+        res.json({ success: true, hours: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
 
 // Get monthly calendar stats
 exports.getMonthlyStats = async (req, res) => {
@@ -247,20 +308,29 @@ exports.getOrganizationInfo = async (req, res) => {
     }
 };
 
-// Get business hours
-exports.getBusinessHours = async (req, res) => {
+// Get organization by slug (for customer booking page)
+exports.getOrganizationBySlug = async (req, res) => {
     try {
-        const organizationId = req.query.orgId || 1;
+        const { slug } = req.params;
         
-        const result = await db.query('SELECT * FROM get_business_hours($1)', [organizationId]);
+        const result = await db.query(
+            `SELECT id, name, slug, logo_url, primary_color, timezone, address, phone, email, status
+             FROM organization 
+             WHERE slug = $1 AND status = 'active'`,
+            [slug]
+        );
         
-        res.json({ success: true, hours: result.rows });
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Organization not found' });
+        }
+        
+        res.json({ success: true, organization: result.rows[0] });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 };
 
-// Get weekly view
+// Get weekly view (7 days of 30-min slots)
 exports.getWeeklyView = async (req, res) => {
     try {
         const { start_date } = req.params;

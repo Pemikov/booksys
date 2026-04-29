@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Booking System</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; min-height: 100vh; }
+        .customer-container { max-width: 1300px; margin: 0 auto; padding: 20px; }
+        .org-header { text-align: center; background: white; border-radius: 16px; padding: 20px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        .org-name { font-size: 28px; font-weight: 600; color: #1a1a2e; margin-bottom: 8px; }
+        .org-contact { color: #666; font-size: 14px; }
+        .calendar-nav { display: flex; justify-content: space-between; align-items: center; background: white; padding: 12px 20px; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); flex-wrap: wrap; gap: 12px; }
+        .view-selector { display: flex; gap: 8px; }
+        .view-btn { padding: 8px 20px; border: 1px solid #ddd; background: white; border-radius: 40px; cursor: pointer; font-weight: 500; transition: 0.2s; }
+        .view-btn.active { background: #e94560; color: white; border-color: #e94560; }
+        .date-nav { display: flex; align-items: center; gap: 16px; }
+        .nav-arrow { background: #f0f2f5; border: none; padding: 8px 16px; border-radius: 40px; cursor: pointer; font-weight: 500; }
+        .current-date { font-size: 18px; font-weight: 600; color: #1a1a2e; }
+        .calendar-view { background: white; border-radius: 16px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); overflow-x: auto; }
+        .month-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; background: #e0e0e0; border: 1px solid #e0e0e0; border-radius: 12px; overflow: hidden; }
+        .month-day-header { background: #f8f9fa; padding: 12px; text-align: center; font-weight: 600; color: #555; }
+        .month-day { background: white; min-height: 100px; padding: 10px; cursor: pointer; transition: 0.2s; position: relative; }
+        .month-day:hover { background: #f5f5f5; }
+        .month-day.disabled { background: #fafafa; cursor: not-allowed; opacity: 0.6; }
+        .month-day.today { background: #ffe6e9; }
+        .day-number { font-weight: bold; font-size: 16px; margin-bottom: 8px; }
+        .day-stats { font-size: 12px; position: absolute; bottom: 8px; right: 8px; }
+        .stats-free { color: #27ae60; }
+        .stats-booked { color: #e74c3c; }
+        .weekly-table { width: 100%; border-collapse: collapse; }
+        .weekly-table th, .weekly-table td { border: 1px solid #e0e0e0; padding: 8px; vertical-align: top; }
+        .weekly-table th { background: #f8f9fa; font-weight: 600; }
+        .time-slot { margin: 4px 0; padding: 6px; border-radius: 6px; font-size: 12px; cursor: pointer; background: #d4edda; color: #155724; }
+        .time-slot.booked { background: #f8d7da; color: #721c24; cursor: not-allowed; }
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 24px; border-radius: 16px; width: 400px; max-width: 90%; }
+        .modal-content input, .modal-content select { width: 100%; padding: 10px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 8px; }
+        .btn-primary { background: #e94560; color: white; border: none; padding: 10px 20px; border-radius: 40px; cursor: pointer; }
+        .btn-secondary { background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 40px; cursor: pointer; margin-right: 8px; }
+        .toast { position: fixed; bottom: 20px; right: 20px; background: #333; color: white; padding: 12px 20px; border-radius: 40px; z-index: 1100; animation: fadeIn 0.3s; }
+        .toast.success { background: #27ae60; }
+        .toast.error { background: #e74c3c; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        .spinner { text-align: center; padding: 40px; color: #666; }
+    </style>
+</head>
+<body>
+<div class="customer-container">
+    <div class="org-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+        <div>
+            <h1 id="orgName" class="org-name" style="margin:0; font-size:28px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px;">Loading...</h1>
+            <div id="orgContact" class="org-contact" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 400px;"></div>
+        </div>
+        <div id="liveDateTime" style="font-size:14px; color:#666; font-family: monospace;"></div>
+    </div>
+    <div class="calendar-nav">
+        <div class="view-selector">
+            <button class="view-btn" data-view="month">Month</button>
+            <button class="view-btn" data-view="week">Week</button>
+            <button class="view-btn" data-view="day">Day</button>
+        </div>
+        <div class="date-nav">
+            <button class="nav-arrow" id="prevBtn">← Prev</button>
+            <span id="currentDateDisplay" class="current-date"></span>
+            <button class="nav-arrow" id="nextBtn">Next →</button>
+        </div>
+    </div>
+    <div id="calendarContainer" class="calendar-view"><div class="spinner">Loading calendar...</div></div>
+</div>
+
+<div id="bookingModal" class="modal">
+    <div class="modal-content">
+        <h2>Book Appointment</h2>
+        <div id="selectedSlot" style="margin-bottom: 12px; background:#f8f9fa; padding: 8px; border-radius: 8px;"></div>
+        <input type="text" id="customerName" placeholder="Full Name *">
+        <input type="email" id="customerEmail" placeholder="Email *">
+        <input type="tel" id="customerPhone" placeholder="Phone">
+        <select id="serviceSelect"><option>Loading services...</option></select>
+        <select id="staffSelect"><option>Loading staff...</option></select>
+        <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px;">
+            <button class="btn-secondary" id="closeModalBtn">Cancel</button>
+            <button class="btn-primary" id="confirmBookingBtn">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    let currentView = 'month';
+    let currentDate = new Date();
+    let organization = null;
+    let businessHours = [];
+    let services = [];
+    let staff = [];
+    let monthlyStats = {};
+
+    async function init() {
+        await loadOrganization();
+        await loadBusinessHours();
+        await loadServices();
+        await loadStaff();
+        await loadMonthlyStats();
+        renderCalendar();
+        attachEvents();
+    }
+
+    async function loadOrganization() {
+        const slug = window.location.pathname.split('/').pop() || 'demo-clinic';
+        const res = await fetch(`/api/calendar/organization-by-slug/${slug}`);
+        const data = await res.json();
+        if (data.success) {
+            organization = data.organization;
+            document.getElementById('orgName').innerText = organization.name;
+            if (organization.primary_color) document.documentElement.style.setProperty('--primary-color', organization.primary_color);
+            const contact = document.getElementById('orgContact');
+            if (contact) contact.innerText = `${organization.address || ''} ${organization.phone || ''} ${organization.email || ''}`.trim();
+        }
+    }
+
+    async function loadBusinessHours() {
+        const res = await fetch(`/api/calendar/business-hours?orgId=${organization?.id || 1}`);
+        const data = await res.json();
+        businessHours = data.hours || [];
+    }
+
+    async function loadServices() {
+        const res = await fetch(`/api/calendar/services?orgId=${organization?.id || 1}`);
+        const data = await res.json();
+        services = data.services || [];
+        const select = document.getElementById('serviceSelect');
+        if (select) select.innerHTML = '<option value="">Select a service</option>' + services.map(s => `<option value="${s.id}">${s.name} (${s.duration_minutes} min - $${s.price})</option>`).join('');
+    }
+
+    async function loadStaff() {
+        const res = await fetch(`/api/calendar/staff?orgId=${organization?.id || 1}`);
+        const data = await res.json();
+        staff = data.staff || [];
+        const select = document.getElementById('staffSelect');
+        if (select) select.innerHTML = '<option value="">Any staff</option>' + staff.map(s => `<option value="${s.id}">${s.name} - ${s.role}</option>`).join('');
+    }
+
+    async function loadMonthlyStats() {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth() + 1;
+        const res = await fetch(`/api/calendar/monthly-stats/${year}/${month}?orgId=${organization?.id || 1}`);
+        const data = await res.json();
+        if (data.success) {
+            monthlyStats = {};
+            data.stats.forEach(stat => { monthlyStats[stat.day_date.split('T')[0]] = stat; });
+        }
+        renderCalendar();
+    }
+
+    function updateDateTime() {
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        document.getElementById('liveDateTime').innerText = now.toLocaleDateString(undefined, options);
+    }
+    updateDateTime();
+    setInterval(updateDateTime, 1000);
+
+    function renderCalendar() {
+        const container = document.getElementById('calendarContainer');
+        if (!container) return;
+        if (currentView === 'month') renderMonth(container);
+        else if (currentView === 'week') renderWeek(container);
+        else renderDay(container);
+        document.getElementById('currentDateDisplay').innerText = currentDate.toLocaleDateString();
+    }
+
+    function renderMonth(container) {
+        const year = currentDate.getFullYear();
+        const month = currentDate.getMonth();
+        const firstDay = new Date(year, month, 1);
+        const lastDay = new Date(year, month + 1, 0);
+        const startWeekday = firstDay.getDay();
+        const daysInMonth = lastDay.getDate();
+        const todayStr = new Date().toISOString().split('T')[0];
+        let html = '<div class="month-grid">';
+        ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(d => html += `<div class="month-day-header">${d}</div>`);
+        for (let i = 0; i < startWeekday; i++) html += '<div class="month-day disabled"></div>';
+        for (let d = 1; d <= daysInMonth; d++) {
+            const date = new Date(year, month, d);
+            const dateStr = date.toISOString().split('T')[0];
+            const dow = date.getDay();
+            const bh = businessHours.find(h => h.day_of_week === dow);
+            const isOpen = bh?.is_open === true;
+            const stats = monthlyStats[dateStr] || { total_slots: 0, booked_slots: 0, free_slots: 0 };
+            const free = stats.free_slots || 0;
+            const booked = stats.booked_slots || 0;
+            const disabled = !isOpen || (stats.total_slots > 0 && free === 0);
+            html += `<div class="month-day ${dateStr === todayStr ? 'today' : ''} ${disabled ? 'disabled' : ''}" data-date="${dateStr}" onclick="${!disabled ? `selectDate('${dateStr}')` : ''}">
+                        <div class="day-number">${d}</div>
+                        <div class="day-stats">${isOpen ? `<span class="stats-free">${free} free</span> / <span class="stats-booked">${booked} booked</span>` : '<span class="stats-booked">Closed</span>'}</div>
+                    </div>`;
+        }
+        html += '</div>';
+        container.innerHTML = html;
+    }
+
+    async function renderWeek(container) {
+        const start = new Date(currentDate);
+        start.setDate(start.getDate() - start.getDay());
+        const days = [];
+        for (let i = 0; i < 7; i++) { let d = new Date(start); d.setDate(start.getDate() + i); days.push(d); }
+        const sampleBh = businessHours.find(h => h.is_open) || { open_time: '09:00', close_time: '17:00', slot_interval: 30 };
+        const slots = [];
+        let cur = sampleBh.open_time;
+        while (cur < sampleBh.close_time) {
+            let end = addMinutes(cur, sampleBh.slot_interval);
+            slots.push({ start: cur, end });
+            cur = end;
+        }
+        let html = '<table class="weekly-table"><thead><tr>';
+        days.forEach(day => html += `<th>${day.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' })}</th>`);
+        html += '</tr></thead><tbody>';
+        for (const slot of slots) {
+            html += '<tr>';
+            for (const day of days) {
+                const dateStr = day.toISOString().split('T')[0];
+                const avail = await fetchAvailability(dateStr);
+                const s = avail.find(a => a.slot_start === slot.start);
+                const isAvail = s ? s.is_available : false;
+                html += `<td class="time-slot ${isAvail ? 'available' : 'booked'}" onclick="${isAvail ? `openBookingModal('${dateStr}','${slot.start}','${slot.end}')` : ''}">
+                            ${slot.start} - ${slot.end}<br>${isAvail ? 'Available' : 'Booked'}
+                         </td>`;
+            }
+            html += '</tr>';
+        }
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    async function renderDay(container) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        const dow = currentDate.getDay();
+        const bh = businessHours.find(h => h.day_of_week === dow);
+        if (!bh?.is_open) { container.innerHTML = '<div class="spinner">Closed</div>'; return; }
+        const slots = await fetchAvailability(currentDate);
+        let html = '<table class="weekly-table"><thead><tr><th>Time</th><th>Status</th><th>Staff</th><th>Action</th></tr></thead><tbody>';
+        slots.forEach(slot => {
+            html += `<tr class="time-slot ${slot.is_available ? 'available' : 'booked'}">
+                        <td>${slot.slot_start} - ${slot.slot_end}</td>
+                        <td>${slot.is_available ? '✅ Available' : '❌ Booked'}</td>
+                        <td>${slot.staff_name || 'Any'}</td>
+                        <td>${slot.is_available ? `<button onclick="openBookingModal('${dateStr}','${slot.slot_start}','${slot.slot_end}')">Book</button>` : 'Not available'}</td>
+                    </tr>`;
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+    }
+
+    async function fetchAvailability(date) {
+        const dateStr = date.toISOString ? date.toISOString().split('T')[0] : date;
+        const res = await fetch(`/api/calendar/availability/${dateStr}?orgId=${organization?.id || 1}`);
+        const data = await res.json();
+        return data.slots || [];
+    }
+
+    function addMinutes(time, minutes) {
+        let [h,m] = time.split(':');
+        let d = new Date(); d.setHours(parseInt(h), parseInt(m));
+        d.setMinutes(d.getMinutes() + minutes);
+        return d.toTimeString().slice(0,5);
+    }
+
+    function selectDate(dateStr) {
+        currentDate = new Date(dateStr);
+        currentView = 'day';
+        renderCalendar();
+        document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelector('.view-btn[data-view="day"]')?.classList.add('active');
+    }
+
+    function changeView(view) {
+        currentView = view;
+        if (view === 'month') loadMonthlyStats();
+        else renderCalendar();
+        document.querySelectorAll('.view-btn').forEach(btn => btn.classList.remove('active'));
+        document.querySelector(`.view-btn[data-view="${view}"]`)?.classList.add('active');
+    }
+
+    function changeDate(delta) {
+        if (currentView === 'month') {
+            currentDate.setMonth(currentDate.getMonth() + delta);
+            loadMonthlyStats();
+        } else if (currentView === 'week') {
+            currentDate.setDate(currentDate.getDate() + delta * 7);
+            renderCalendar();
+        } else {
+            currentDate.setDate(currentDate.getDate() + delta);
+            renderCalendar();
+        }
+        document.getElementById('currentDateDisplay').innerText = currentDate.toLocaleDateString();
+    }
+
+    let selectedBooking = null;
+    function openBookingModal(date, start, end) {
+        selectedBooking = { date, start, end };
+        document.getElementById('selectedSlot').innerHTML = `<strong>Date:</strong> ${date}<br><strong>Time:</strong> ${start} - ${end}`;
+        document.getElementById('bookingModal').style.display = 'flex';
+    }
+
+    async function confirmBooking() {
+        const name = document.getElementById('customerName').value;
+        const email = document.getElementById('customerEmail').value;
+        const phone = document.getElementById('customerPhone').value;
+        const serviceId = document.getElementById('serviceSelect').value;
+        const staffId = document.getElementById('staffSelect').value;
+        if (!name || !email) { showToast('Name and email required', 'error'); return; }
+        const booking = {
+            organization_id: organization?.id || 1,
+            customer_name: name,
+            customer_email: email,
+            customer_phone: phone,
+            booking_date: selectedBooking.date,
+            start_time: selectedBooking.start,
+            end_time: selectedBooking.end,
+            service_id: serviceId || null,
+            staff_id: staffId || null
+        };
+        const res = await fetch('/api/calendar/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(booking) });
+        const data = await res.json();
+        if (data.success) {
+            showToast('Booking confirmed!', 'success');
+            closeModal();
+            loadMonthlyStats();
+            renderCalendar();
+        } else {
+            showToast(data.error || 'Booking failed', 'error');
+        }
+    }
+
+    function closeModal() {
+        document.getElementById('bookingModal').style.display = 'none';
+        document.getElementById('customerName').value = '';
+        document.getElementById('customerEmail').value = '';
+        document.getElementById('customerPhone').value = '';
+    }
+
+    function showToast(msg, type) {
+        let toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        toast.innerText = msg;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+
+    function attachEvents() {
+        document.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', () => changeView(btn.dataset.view)));
+        document.getElementById('prevBtn').addEventListener('click', () => changeDate(-1));
+        document.getElementById('nextBtn').addEventListener('click', () => changeDate(1));
+        document.getElementById('confirmBookingBtn').addEventListener('click', confirmBooking);
+        document.getElementById('closeModalBtn').addEventListener('click', closeModal);
+        window.addEventListener('click', (e) => { if (e.target === document.getElementById('bookingModal')) closeModal(); });
+    }
+
+    init();
+</script>
+</body>
+</html>

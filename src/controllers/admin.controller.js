@@ -1,0 +1,362 @@
+const db = require('../config/db');
+
+// Get organization settings
+exports.getSettings = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        
+        // Get organization details
+        const orgResult = await db.query(
+            `SELECT id, name, slug, logo_url, primary_color, timezone, 
+                    max_advance_booking_days, min_notice_hours, address, phone, email
+             FROM organization WHERE id = $1`,
+            [orgId]
+        );
+        
+        // Get business hours
+        const hoursResult = await db.query(
+            `SELECT * FROM get_business_hours($1)`,
+            [orgId]
+        );
+        
+        // Get notification settings
+        const notifResult = await db.query(
+            `SELECT * FROM notification_settings WHERE organization_id = $1`,
+            [orgId]
+        );
+        
+        res.json({
+            success: true,
+            organization: orgResult.rows[0],
+            business_hours: hoursResult.rows,
+            notifications: notifResult.rows[0] || {}
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Update business hours
+exports.updateBusinessHours = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const { hours } = req.body; // Array of { day_of_week, is_open, open_time, close_time, slot_interval }
+        
+        for (const hour of hours) {
+            await db.query(
+                `INSERT INTO business_hours (organization_id, day_of_week, is_open, open_time, close_time, slot_interval)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT (organization_id, day_of_week)
+                 DO UPDATE SET is_open = EXCLUDED.is_open, open_time = EXCLUDED.open_time, 
+                               close_time = EXCLUDED.close_time, slot_interval = EXCLUDED.slot_interval`,
+                [orgId, hour.day_of_week, hour.is_open, hour.open_time, hour.close_time, hour.slot_interval || 30]
+            );
+        }
+        
+        res.json({ success: true, message: 'Business hours updated' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Update organization settings
+exports.updateOrganization = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const { name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email } = req.body;
+        
+        await db.query(
+            `UPDATE organization 
+             SET name = COALESCE($1, name),
+                 logo_url = COALESCE($2, logo_url),
+                 primary_color = COALESCE($3, primary_color),
+                 timezone = COALESCE($4, timezone),
+                 max_advance_booking_days = COALESCE($5, max_advance_booking_days),
+                 min_notice_hours = COALESCE($6, min_notice_hours),
+                 address = COALESCE($7, address),
+                 phone = COALESCE($8, phone),
+                 email = COALESCE($9, email)
+             WHERE id = $10`,
+            [name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email, orgId]
+        );
+        
+        res.json({ success: true, message: 'Organization updated' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Get all customers (with booking history)
+exports.getCustomers = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const { search, sort_by = 'created_at', sort_order = 'DESC' } = req.query;
+        
+        let query = `
+            SELECT 
+                c.id, c.name, c.email, c.phone, c.created_at,
+                COUNT(b.id) as total_bookings,
+                MAX(b.booking_date) as last_booking_date
+            FROM customers c
+            LEFT JOIN bookings b ON c.id = b.customer_id AND b.organization_id = $1
+            WHERE c.organization_id = $1
+        `;
+        const params = [orgId];
+        
+        if (search) {
+            query += ` AND (c.name ILIKE $2 OR c.email ILIKE $2 OR c.phone ILIKE $2)`;
+            params.push(`%${search}%`);
+        }
+        
+        query += ` GROUP BY c.id ORDER BY ${sort_by} ${sort_order}`;
+        
+        const result = await db.query(query, params);
+        res.json({ success: true, customers: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Get all bookings (admin view)
+exports.getBookings = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const { start_date, end_date, status, customer_id } = req.query;
+        
+        let query = `
+            SELECT 
+                b.id, b.booking_date, b.start_time, b.end_time, b.status, b.created_at,
+                c.name as customer_name, c.email as customer_email, c.phone as customer_phone,
+                s.name as service_name, st.name as staff_name
+            FROM bookings b
+            LEFT JOIN customers c ON b.customer_id = c.id
+            LEFT JOIN services s ON b.service_id = s.id
+            LEFT JOIN staff st ON b.staff_id = st.id
+            WHERE b.organization_id = $1
+        `;
+        const params = [orgId];
+        let paramIndex = 2;
+        
+        if (start_date) {
+            query += ` AND b.booking_date >= $${paramIndex++}`;
+            params.push(start_date);
+        }
+        if (end_date) {
+            query += ` AND b.booking_date <= $${paramIndex++}`;
+            params.push(end_date);
+        }
+        if (status) {
+            query += ` AND b.status = $${paramIndex++}`;
+            params.push(status);
+        }
+        if (customer_id) {
+            query += ` AND b.customer_id = $${paramIndex++}`;
+            params.push(customer_id);
+        }
+        
+        query += ` ORDER BY b.booking_date DESC, b.start_time ASC`;
+        
+        const result = await db.query(query, params);
+        res.json({ success: true, bookings: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Update booking status (admin)
+exports.updateBookingStatus = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        
+        const result = await db.query(
+            `UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP 
+             WHERE id = $2 AND organization_id = $3
+             RETURNING *`,
+            [status, id, req.organizationId]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Booking not found' });
+        }
+        
+        res.json({ success: true, booking: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Get services
+exports.getServices = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const result = await db.query(
+            `SELECT * FROM services WHERE organization_id = $1 ORDER BY name`,
+            [orgId]
+        );
+        res.json({ success: true, services: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Create/update service
+exports.saveService = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const { id, name, description, duration_minutes, buffer_minutes, price, is_active } = req.body;
+        
+        let result;
+        if (id) {
+            result = await db.query(
+                `UPDATE services SET name = $1, description = $2, duration_minutes = $3, 
+                    buffer_minutes = $4, price = $5, is_active = $6
+                 WHERE id = $7 AND organization_id = $8 RETURNING *`,
+                [name, description, duration_minutes, buffer_minutes, price, is_active, id, orgId]
+            );
+        } else {
+            result = await db.query(
+                `INSERT INTO services (organization_id, name, description, duration_minutes, buffer_minutes, price, is_active)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+                [orgId, name, description, duration_minutes, buffer_minutes, price, is_active]
+            );
+        }
+        
+        res.json({ success: true, service: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Delete service
+exports.deleteService = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.query(
+            `DELETE FROM services WHERE id = $1 AND organization_id = $2`,
+            [id, req.organizationId]
+        );
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Get staff
+exports.getStaff = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const result = await db.query(
+            `SELECT * FROM staff WHERE organization_id = $1 ORDER BY name`,
+            [orgId]
+        );
+        res.json({ success: true, staff: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Save staff
+exports.saveStaff = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const { id, name, email, phone, role, color, is_active } = req.body;
+        
+        let result;
+        if (id) {
+            result = await db.query(
+                `UPDATE staff SET name = $1, email = $2, phone = $3, role = $4, color = $5, is_active = $6, updated_at = CURRENT_TIMESTAMP
+                 WHERE id = $7 AND organization_id = $8 RETURNING *`,
+                [name, email, phone, role, color, is_active, id, orgId]
+            );
+        } else {
+            result = await db.query(
+                `INSERT INTO staff (organization_id, name, email, phone, role, color, is_active)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+                [orgId, name, email, phone, role, color, is_active]
+            );
+        }
+        
+        res.json({ success: true, staff: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Delete staff
+exports.deleteStaff = async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.query(
+            `DELETE FROM staff WHERE id = $1 AND organization_id = $2`,
+            [id, req.organizationId]
+        );
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Save notification settings
+exports.saveNotificationSettings = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const { email_enabled, sms_enabled, webhook_enabled, webhook_url, email_from } = req.body;
+        
+        await db.query(
+            `INSERT INTO notification_settings (organization_id, email_enabled, sms_enabled, webhook_enabled, webhook_url, email_from)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (organization_id) DO UPDATE SET
+                email_enabled = EXCLUDED.email_enabled,
+                sms_enabled = EXCLUDED.sms_enabled,
+                webhook_enabled = EXCLUDED.webhook_enabled,
+                webhook_url = EXCLUDED.webhook_url,
+                email_from = EXCLUDED.email_from,
+                updated_at = CURRENT_TIMESTAMP`,
+            [orgId, email_enabled, sms_enabled, webhook_enabled, webhook_url, email_from]
+        );
+        
+        res.json({ success: true, message: 'Notification settings saved' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Get booking page data (for customer-facing page by slug)
+exports.getBookingPageBySlug = async (req, res) => {
+    try {
+        const { slug } = req.params;
+        
+        const result = await db.query(
+            `SELECT id, name, slug, logo_url, primary_color, timezone, address, phone, email
+             FROM organization WHERE slug = $1 AND status = 'active'`,
+            [slug]
+        );
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Organization not found' });
+        }
+        
+        res.json({ success: true, organization: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Generate shareable link (returns slug)
+exports.getShareableLink = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const result = await db.query(
+            `SELECT slug FROM organization WHERE id = $1`,
+            [orgId]
+        );
+        
+        const slug = result.rows[0].slug;
+        const link = `${req.protocol}://${req.get('host')}/book/${slug}`;
+        
+        res.json({ success: true, link: link, slug: slug });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
