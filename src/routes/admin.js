@@ -6,6 +6,9 @@ const { isAuthenticated } = require('../middleware/auth');
 // All admin routes require authentication
 router.use(isAuthenticated);
 
+// Availability (admin version)
+router.get('/availability/:date', adminController.getAdminAvailability);
+
 // Settings
 router.get('/settings', adminController.getSettings);
 router.put('/settings/business-hours', adminController.updateBusinessHours);
@@ -21,6 +24,7 @@ router.put('/bookings/:id/status', adminController.updateBookingStatus);
 
 // Services
 router.get('/services', adminController.getServices);
+router.get('/services/:id', adminController.getServiceById);   // <-- ADD THIS
 router.post('/services', adminController.saveService);
 router.delete('/services/:id', adminController.deleteService);
 

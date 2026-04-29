@@ -107,6 +107,14 @@
         } catch(e) { localStorage.removeItem('adminToken'); window.location.href = '/admin'; }
     }
 
+    function updateAdminDateTime() {
+        const now = new Date();
+        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' };
+        const dtElement = document.getElementById('adminLiveDateTime');
+        if (dtElement) dtElement.innerText = now.toLocaleDateString(undefined, options);
+    }
+    setInterval(updateAdminDateTime, 1000);
+
     async function renderServices(container) {
         try {
             const res = await fetch('/api/admin/services', { headers: { 'Authorization': token } });
@@ -179,13 +187,13 @@
                     body: JSON.stringify(serviceData)
                 });
                 if (response.ok) {
-                    closeServiceModal();
-                    renderServices(container);
-                    showToast('Service saved', 'success');
-                } else {
-                    showToast('Error saving service', 'error');
+                        closeServiceModal();
+                        loadPage('services');   // <-- replace renderServices(container)
+                        showToast('Service saved', 'success');
+                    } else {
+                        showToast('Error saving service', 'error');
+                    }
                 }
-            }
             
             function showServiceModal(service = null) {
                 document.getElementById('serviceId').value = service?.id || '';
@@ -247,7 +255,13 @@
         const confirmed = bookingsData.bookings?.filter(b => b.status === 'confirmed').length || 0;
         const totalCustomers = customersData.customers?.length || 0;
         container.innerHTML = `
-            <div class="page-header"><h1>Dashboard</h1><div>Welcome, ${adminInfo.name || 'Admin'}</div></div>
+            <div class="page-header">
+                <h1>Dashboard</h1>
+                    <div>
+                        <div>Welcome, ${adminInfo.name || 'Admin'}</div>
+                        <div id="adminLiveDateTime" style="font-size: 14px; color: #666; margin-top: 5px;"></div>
+                    </div>
+                </div>
             <div class="stats-grid">
                 <div class="stat-card"><div class="stat-number">${totalBookings}</div><div class="stat-label">Total Bookings</div></div>
                 <div class="stat-card"><div class="stat-number">${confirmed}</div><div class="stat-label">Confirmed</div></div>
@@ -282,7 +296,7 @@
 
         const fetchAvailability = async (date) => {
             const ds = date.toISOString().split('T')[0];
-            const res = await fetch(`/api/calendar/availability/${ds}?orgId=${adminInfo.organization_id}`, { headers: { 'Authorization': token } });
+            const res = await fetch(`/api/admin/availability/${ds}`, { headers: { 'Authorization': token } });
             const data = await res.json();
             return data.slots || [];
         };

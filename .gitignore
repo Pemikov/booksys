@@ -1,18 +1,32 @@
 node_modules/
-.env
-.env_save
-.env.backup
-.env*
-*.log
+
+# Database dumps
+*.dump
+*.backup
+*_prod.sql
+*_data.sql
+dump-*.sql
+full_dump.sql
 .DS_Store
+
+# Environment
+.env
+.env.*
 *.pem
 *.pem.*
 *.key
 *.key.*
 *.secret
 *.secret.*
-dump-*.sql
-full_dump.sql
+.env_save
+.env.backup
+.env*
+
+
+# Logs
+*.log
+
+# running files
 *.bat
 *.sh
 *.aider.*

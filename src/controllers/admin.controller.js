@@ -40,6 +40,46 @@ exports.getSettings = async (req, res) => {
     }
 };
 
+// Admin-only availability with customer details
+exports.getAdminAvailability = async (req, res) => {
+    try {
+        const { date } = req.params;
+        const orgId = req.organizationId;
+
+        const result = await db.query(
+            `SELECT 
+                ts.slot_start,
+                ts.slot_end,
+                CASE WHEN b.id IS NULL THEN true ELSE false END as is_available,
+                b.id as booking_id,
+                s.name as staff_name,
+                c.name as customer_name,
+                c.email as customer_email
+             FROM time_slots_template ts
+             CROSS JOIN business_hours bh
+             LEFT JOIN bookings b ON 
+                 b.booking_date = $2
+                 AND b.start_time = ts.slot_start
+                 AND b.organization_id = $1
+                 AND b.status NOT IN ('cancelled', 'completed')
+             LEFT JOIN staff s ON b.staff_id = s.id
+             LEFT JOIN customers c ON b.customer_id = c.id
+             WHERE bh.organization_id = $1
+                 AND bh.day_of_week = EXTRACT(DOW FROM $2::DATE)
+                 AND bh.is_open = true
+                 AND ts.slot_start >= bh.open_time
+                 AND ts.slot_end <= bh.close_time
+             ORDER BY ts.slot_start`,
+            [orgId, date]
+        );
+
+        res.json({ success: true, slots: result.rows });
+    } catch (error) {
+        console.error('Error fetching admin availability:', error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 // Update business hours
 exports.updateBusinessHours = async (req, res) => {
     try {
