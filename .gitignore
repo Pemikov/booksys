@@ -14,3 +14,5 @@ node_modules/
 dump-*.sql
 full_dump.sql
 *.bat
+*.sh
+*.aider.*

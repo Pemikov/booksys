@@ -80,6 +80,7 @@
             <li class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span><span>Dashboard</span></li>
             <li class="nav-item" data-page="calendar"><span class="nav-icon">📅</span><span>Calendar</span></li>
             <li class="nav-item" data-page="customers"><span class="nav-icon">👥</span><span>Customers</span></li>
+            <li class="nav-item" data-page="services"><span class="nav-icon">💼</span><span>Services</span></li>
             <li class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span><span>Settings</span></li>
             <li class="nav-item" data-page="logs"><span class="nav-icon">📜</span><span>Logs</span></li>
             <li class="nav-item" data-page="logout"><span class="nav-icon">🚪</span><span>Logout</span></li>
@@ -106,6 +107,109 @@
         } catch(e) { localStorage.removeItem('adminToken'); window.location.href = '/admin'; }
     }
 
+    async function renderServices(container) {
+        try {
+            const res = await fetch('/api/admin/services', { headers: { 'Authorization': token } });
+            const data = await res.json();
+            const services = data.services || [];
+            
+            container.innerHTML = `
+                <div class="page-header">
+                    <h1>Services</h1>
+                    <button class="btn-primary" id="addServiceBtn">+ Add Service</button>
+                </div>
+                <div id="servicesList">
+                    ${services.map(s => `
+                        <div class="settings-section" style="margin-bottom: 15px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <h3>${escapeHtml(s.name)} (${s.duration_minutes} min) - $${s.price}</h3>
+                                <button class="btn-secondary edit-service" data-id="${s.id}">Edit</button>
+                            </div>
+                            <p>${s.description || ''}</p>
+                        </div>
+                    `).join('')}
+                </div>
+                <div id="serviceModal" class="modal" style="display:none">
+                    <div class="modal-content">
+                        <h2 id="modalTitle">Add Service</h2>
+                        <input type="hidden" id="serviceId">
+                        <div class="form-row"><label>Service Name</label><input id="serviceName" placeholder="e.g., Dental Cleaning"></div>
+                        <div class="form-row"><label>Description</label><textarea id="serviceDescription" rows="3"></textarea></div>
+                        <div class="form-row"><label>Duration (minutes)</label><input id="serviceDuration" type="number" value="30"></div>
+                        <div class="form-row"><label>Buffer (minutes)</label><input id="serviceBuffer" type="number" value="0"></div>
+                        <div class="form-row"><label>Price ($)</label><input id="servicePrice" type="number" step="0.01" value="0"></div>
+                        <div class="form-row" style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="serviceActive" checked style="margin: 0;">
+                                <label for="serviceActive" style="margin: 0;">Active</label>
+                            </div>
+                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                            <button class="btn-secondary" id="closeServiceModal">Cancel</button>
+                            <button class="btn-primary" id="saveServiceBtn">Save</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Add event listeners
+            document.getElementById('addServiceBtn')?.addEventListener('click', () => showServiceModal());
+            document.getElementById('closeServiceModal')?.addEventListener('click', () => closeServiceModal());
+            document.getElementById('saveServiceBtn')?.addEventListener('click', saveService);
+            document.querySelectorAll('.edit-service').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = btn.dataset.id;
+                    const res = await fetch(`/api/admin/services/${id}`, { headers: { 'Authorization': token } });
+                    const data = await res.json();
+                    if (data.success) showServiceModal(data.service);
+                });
+            });
+            
+            async function saveService() {
+                const serviceData = {
+                    id: document.getElementById('serviceId').value || null,
+                    name: document.getElementById('serviceName').value,
+                    description: document.getElementById('serviceDescription').value,
+                    duration_minutes: parseInt(document.getElementById('serviceDuration').value),
+                    buffer_minutes: parseInt(document.getElementById('serviceBuffer').value),
+                    price: parseFloat(document.getElementById('servicePrice').value),
+                    is_active: document.getElementById('serviceActive').checked
+                };
+                const response = await fetch('/api/admin/services', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                    body: JSON.stringify(serviceData)
+                });
+                if (response.ok) {
+                    closeServiceModal();
+                    renderServices(container);
+                    showToast('Service saved', 'success');
+                } else {
+                    showToast('Error saving service', 'error');
+                }
+            }
+            
+            function showServiceModal(service = null) {
+                document.getElementById('serviceId').value = service?.id || '';
+                document.getElementById('serviceName').value = service?.name || '';
+                document.getElementById('serviceDescription').value = service?.description || '';
+                document.getElementById('serviceDuration').value = service?.duration_minutes || 30;
+                document.getElementById('serviceBuffer').value = service?.buffer_minutes || 0;
+                document.getElementById('servicePrice').value = service?.price || 0;
+                document.getElementById('serviceActive').checked = service?.is_active !== false;
+                document.getElementById('modalTitle').innerText = service ? 'Edit Service' : 'Add Service';
+                document.getElementById('serviceModal').style.display = 'flex';
+            }
+            
+            function closeServiceModal() {
+                document.getElementById('serviceModal').style.display = 'none';
+            }
+            
+            function escapeHtml(str) { return str.replace(/[&<>]/g, function(m){if(m==='&') return '&amp;'; if(m==='<') return '&lt;'; if(m==='>') return '&gt;'; return m;}); }
+            
+        } catch (error) {
+            container.innerHTML = '<div class="spinner">Error loading services</div>';
+        }
+    }
+    
     async function loadPage(page) {
         document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
         document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
@@ -114,6 +218,7 @@
         if (page === 'dashboard') await renderDashboard(container);
         else if (page === 'calendar') await renderCalendar(container);
         else if (page === 'customers') await renderCustomers(container);
+        else if (page === 'services') await renderServices(container);
         else if (page === 'settings') await renderSettings(container);
         else if (page === 'logs') await renderLogs(container);
         else if (page === 'logout') logout();
@@ -298,6 +403,20 @@
                 <div class="form-row"><label>Email</label><input id="orgEmail" value="${org.email||''}"></div>
                 <div class="form-row"><label>Phone</label><input id="orgPhone" value="${org.phone||''}"></div>
                 <div class="form-row"><label>Address</label><input id="orgAddress" value="${org.address||''}"></div>
+                <div class="form-row">
+                    <label>Currency</label>
+                    <select id="orgCurrency">
+                        <option value="USD" ${org.currency === 'USD' ? 'selected' : ''}>USD ($)</option>
+                        <option value="EUR" ${org.currency === 'EUR' ? 'selected' : ''}>EUR (€)</option>
+                        <option value="GBP" ${org.currency === 'GBP' ? 'selected' : ''}>GBP (£)</option>
+                        <option value="JPY" ${org.currency === 'JPY' ? 'selected' : ''}>JPY (¥)</option>
+                        <option value="CAD" ${org.currency === 'CAD' ? 'selected' : ''}>CAD (C$)</option>
+                        <option value="AUD" ${org.currency === 'AUD' ? 'selected' : ''}>AUD (A$)</option>
+                        <option value="CHF" ${org.currency === 'CHF' ? 'selected' : ''}>CHF (Fr)</option>
+                        <option value="CNY" ${org.currency === 'CNY' ? 'selected' : ''}>CNY (¥)</option>
+                        <option value="INR" ${org.currency === 'INR' ? 'selected' : ''}>INR (₹)</option>
+                    </select>
+                </div>
                 <button class="btn-primary" id="saveOrgBtn">Save</button>
             </div>
             <div class="settings-section"><h3>Business Hours</h3><div id="hoursGrid" class="hours-grid"></div>
@@ -332,9 +451,16 @@
         if (linkData.success) document.getElementById('shareLink').value = linkData.link;
         document.getElementById('copyLinkBtn').addEventListener('click', () => { document.getElementById('shareLink').select(); document.execCommand('copy'); showToast('Link copied', 'success'); });
         document.getElementById('saveOrgBtn').addEventListener('click', async () => {
-            const payload = { name: document.getElementById('orgName').value, email: document.getElementById('orgEmail').value, phone: document.getElementById('orgPhone').value, address: document.getElementById('orgAddress').value };
+        const payload = {
+            name: document.getElementById('orgName').value,
+            email: document.getElementById('orgEmail').value,
+            phone: document.getElementById('orgPhone').value,
+            address: document.getElementById('orgAddress').value,
+            currency: document.getElementById('orgCurrency').value
+        };
             await fetch('/api/admin/settings/organization', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'Authorization': token }, body: JSON.stringify(payload) });
             showToast('Organization updated', 'success');
+            
         });
         document.getElementById('saveHoursBtn').addEventListener('click', async () => {
             const hoursArray = [];

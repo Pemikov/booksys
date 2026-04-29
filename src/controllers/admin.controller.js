@@ -5,33 +5,37 @@ exports.getSettings = async (req, res) => {
     try {
         const orgId = req.organizationId;
         
-        // Get organization details
         const orgResult = await db.query(
             `SELECT id, name, slug, logo_url, primary_color, timezone, 
-                    max_advance_booking_days, min_notice_hours, address, phone, email
+                    max_advance_booking_days, min_notice_hours, address, phone, email, currency
              FROM organization WHERE id = $1`,
             [orgId]
         );
         
-        // Get business hours
-        const hoursResult = await db.query(
-            `SELECT * FROM get_business_hours($1)`,
-            [orgId]
-        );
+        let hoursResult = { rows: [] };
+        try {
+            hoursResult = await db.query(
+                `SELECT id, day_of_week, is_open, open_time, close_time, slot_interval
+                 FROM business_hours WHERE organization_id = $1 ORDER BY day_of_week`,
+                [orgId]
+            );
+        } catch (err) {
+            console.log('Error fetching business hours:', err.message);
+        }
         
-        // Get notification settings
-        const notifResult = await db.query(
-            `SELECT * FROM notification_settings WHERE organization_id = $1`,
-            [orgId]
-        );
+        let notifResult = { rows: [] };
+        try {
+            notifResult = await db.query(`SELECT * FROM notification_settings WHERE organization_id = $1`, [orgId]);
+        } catch (err) {}
         
         res.json({
             success: true,
-            organization: orgResult.rows[0],
+            organization: orgResult.rows[0] || {},
             business_hours: hoursResult.rows,
             notifications: notifResult.rows[0] || {}
         });
     } catch (error) {
+        console.error('getSettings error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -40,7 +44,7 @@ exports.getSettings = async (req, res) => {
 exports.updateBusinessHours = async (req, res) => {
     try {
         const orgId = req.organizationId;
-        const { hours } = req.body; // Array of { day_of_week, is_open, open_time, close_time, slot_interval }
+        const { hours } = req.body;
         
         for (const hour of hours) {
             await db.query(
@@ -52,18 +56,17 @@ exports.updateBusinessHours = async (req, res) => {
                 [orgId, hour.day_of_week, hour.is_open, hour.open_time, hour.close_time, hour.slot_interval || 30]
             );
         }
-        
         res.json({ success: true, message: 'Business hours updated' });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
 };
 
-// Update organization settings
+// Update organization
 exports.updateOrganization = async (req, res) => {
     try {
         const orgId = req.organizationId;
-        const { name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email } = req.body;
+        const { name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email, currency } = req.body;
         
         await db.query(
             `UPDATE organization 
@@ -75,9 +78,10 @@ exports.updateOrganization = async (req, res) => {
                  min_notice_hours = COALESCE($6, min_notice_hours),
                  address = COALESCE($7, address),
                  phone = COALESCE($8, phone),
-                 email = COALESCE($9, email)
-             WHERE id = $10`,
-            [name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email, orgId]
+                 email = COALESCE($9, email),
+                 currency = COALESCE($10, currency)
+             WHERE id = $11`,
+            [name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email, currency, orgId]
         );
         
         res.json({ success: true, message: 'Organization updated' });
@@ -86,17 +90,16 @@ exports.updateOrganization = async (req, res) => {
     }
 };
 
-// Get all customers (with booking history)
+// Get all customers
 exports.getCustomers = async (req, res) => {
     try {
         const orgId = req.organizationId;
         const { search, sort_by = 'created_at', sort_order = 'DESC' } = req.query;
         
         let query = `
-            SELECT 
-                c.id, c.name, c.email, c.phone, c.created_at,
-                COUNT(b.id) as total_bookings,
-                MAX(b.booking_date) as last_booking_date
+            SELECT c.id, c.name, c.email, c.phone, c.created_at,
+                   COUNT(b.id) as total_bookings,
+                   MAX(b.booking_date) as last_booking_date
             FROM customers c
             LEFT JOIN bookings b ON c.id = b.customer_id AND b.organization_id = $1
             WHERE c.organization_id = $1
@@ -117,17 +120,16 @@ exports.getCustomers = async (req, res) => {
     }
 };
 
-// Get all bookings (admin view)
+// Get all bookings (admin)
 exports.getBookings = async (req, res) => {
     try {
         const orgId = req.organizationId;
         const { start_date, end_date, status, customer_id } = req.query;
         
         let query = `
-            SELECT 
-                b.id, b.booking_date, b.start_time, b.end_time, b.status, b.created_at,
-                c.name as customer_name, c.email as customer_email, c.phone as customer_phone,
-                s.name as service_name, st.name as staff_name
+            SELECT b.id, b.booking_date, b.start_time, b.end_time, b.status, b.created_at,
+                   c.name as customer_name, c.email as customer_email, c.phone as customer_phone,
+                   s.name as service_name, st.name as staff_name
             FROM bookings b
             LEFT JOIN customers c ON b.customer_id = c.id
             LEFT JOIN services s ON b.service_id = s.id
@@ -163,7 +165,7 @@ exports.getBookings = async (req, res) => {
     }
 };
 
-// Update booking status (admin)
+// Update booking status
 exports.updateBookingStatus = async (req, res) => {
     try {
         const { id } = req.params;
@@ -186,7 +188,7 @@ exports.updateBookingStatus = async (req, res) => {
     }
 };
 
-// Get services
+// Get all services
 exports.getServices = async (req, res) => {
     try {
         const orgId = req.organizationId;
@@ -200,30 +202,59 @@ exports.getServices = async (req, res) => {
     }
 };
 
-// Create/update service
+// Get single service by ID
+exports.getServiceById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const orgId = req.organizationId;
+
+        const result = await db.query(
+            `SELECT * FROM services WHERE id = $1 AND organization_id = $2`,
+            [id, orgId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Service not found' });
+        }
+
+        res.json({ success: true, service: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Create/update service (handles both insert and update)
 exports.saveService = async (req, res) => {
     try {
         const orgId = req.organizationId;
         const { id, name, description, duration_minutes, buffer_minutes, price, is_active } = req.body;
-        
+
         let result;
-        if (id) {
+        // If id exists and is a number, perform UPDATE
+        if (id && !isNaN(parseInt(id))) {
             result = await db.query(
-                `UPDATE services SET name = $1, description = $2, duration_minutes = $3, 
-                    buffer_minutes = $4, price = $5, is_active = $6
-                 WHERE id = $7 AND organization_id = $8 RETURNING *`,
+                `UPDATE services 
+                 SET name = $1, description = $2, duration_minutes = $3, 
+                     buffer_minutes = $4, price = $5, is_active = $6
+                 WHERE id = $7 AND organization_id = $8
+                 RETURNING *`,
                 [name, description, duration_minutes, buffer_minutes, price, is_active, id, orgId]
             );
+            if (result.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Service not found or not owned by organization' });
+            }
         } else {
+            // Insert new service
             result = await db.query(
                 `INSERT INTO services (organization_id, name, description, duration_minutes, buffer_minutes, price, is_active)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                 RETURNING *`,
                 [orgId, name, description, duration_minutes, buffer_minutes, price, is_active]
             );
         }
-        
         res.json({ success: true, service: result.rows[0] });
     } catch (error) {
+        console.error('Error saving service:', error);
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -242,7 +273,7 @@ exports.deleteService = async (req, res) => {
     }
 };
 
-// Get staff
+// Get all staff
 exports.getStaff = async (req, res) => {
     try {
         const orgId = req.organizationId;
@@ -256,14 +287,14 @@ exports.getStaff = async (req, res) => {
     }
 };
 
-// Save staff
+// Save staff (insert/update)
 exports.saveStaff = async (req, res) => {
     try {
         const orgId = req.organizationId;
         const { id, name, email, phone, role, color, is_active } = req.body;
         
         let result;
-        if (id) {
+        if (id && !isNaN(parseInt(id))) {
             result = await db.query(
                 `UPDATE staff SET name = $1, email = $2, phone = $3, role = $4, color = $5, is_active = $6, updated_at = CURRENT_TIMESTAMP
                  WHERE id = $7 AND organization_id = $8 RETURNING *`,
@@ -276,7 +307,6 @@ exports.saveStaff = async (req, res) => {
                 [orgId, name, email, phone, role, color, is_active]
             );
         }
-        
         res.json({ success: true, staff: result.rows[0] });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -322,28 +352,7 @@ exports.saveNotificationSettings = async (req, res) => {
     }
 };
 
-// Get booking page data (for customer-facing page by slug)
-exports.getBookingPageBySlug = async (req, res) => {
-    try {
-        const { slug } = req.params;
-        
-        const result = await db.query(
-            `SELECT id, name, slug, logo_url, primary_color, timezone, address, phone, email
-             FROM organization WHERE slug = $1 AND status = 'active'`,
-            [slug]
-        );
-        
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, error: 'Organization not found' });
-        }
-        
-        res.json({ success: true, organization: result.rows[0] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-};
-
-// Generate shareable link (returns slug)
+// Get shareable link
 exports.getShareableLink = async (req, res) => {
     try {
         const orgId = req.organizationId;
@@ -351,11 +360,27 @@ exports.getShareableLink = async (req, res) => {
             `SELECT slug FROM organization WHERE id = $1`,
             [orgId]
         );
-        
-        const slug = result.rows[0].slug;
+        const slug = result.rows[0]?.slug;
         const link = `${req.protocol}://${req.get('host')}/book/${slug}`;
-        
-        res.json({ success: true, link: link, slug: slug });
+        res.json({ success: true, link });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// Get booking page by slug (public)
+exports.getBookingPageBySlug = async (req, res) => {
+    try {
+        const { slug } = req.params;
+        const result = await db.query(
+            `SELECT id, name, slug, logo_url, primary_color, timezone, address, phone, email, currency
+             FROM organization WHERE slug = $1 AND status = 'active'`,
+            [slug]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Organization not found' });
+        }
+        res.json({ success: true, organization: result.rows[0] });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
