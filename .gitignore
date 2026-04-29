@@ -4,3 +4,5 @@ node_modules
 *.pem
 *.bat
 .aider*
+.env_save
+.env.backup
