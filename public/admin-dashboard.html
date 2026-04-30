@@ -339,11 +339,16 @@
         </tbody></table>`;
     }
 
-    // ===================== CUSTOMERS PAGE =====================
+// ===================== CUSTOMERS PAGE =====================
     async function renderCustomers(container) {
+        // Fetch all customers
         const res = await fetch('/api/admin/customers', { headers: { 'Authorization': token } });
         const data = await res.json();
         const allCustomers = data.customers || [];
+        let currentCustomers = [...allCustomers];
+        let searchTerm = '';
+
+        // Column management
         const availableColumns = [
             { key: 'name', label: 'Name', visible: true },
             { key: 'email', label: 'Email', visible: true },
@@ -352,8 +357,6 @@
             { key: 'last_booking_date', label: 'Last Booking', visible: true },
             { key: 'created_at', label: 'Joined', visible: false }
         ];
-        let currentCustomers = [...allCustomers];
-        let searchTerm = '';
 
         const renderCustomerTable = () => {
             const tableContainer = document.getElementById('customersTable');
@@ -362,11 +365,11 @@
                 tableContainer.innerHTML = '<div class="spinner">No customers found</div>';
                 return;
             }
-            let html = `<table class="data-table"><thead><tr>`;
+            let html = `<div style="overflow-x:auto;"><table class="data-table"><thead><tr>`;
             visibleCols.forEach(col => {
                 html += `<th data-sort="${col.key}" style="cursor: pointer;">${col.label} ↕</th>`;
             });
-            html += `</thead><tbody>`;
+            html += `<th>Actions</th></thead><tbody>`;
             currentCustomers.forEach(c => {
                 html += `<tr>`;
                 visibleCols.forEach(col => {
@@ -376,33 +379,110 @@
                     }
                     html += `<td>${value}</td>`;
                 });
-                html += `</tr>`;
+                html += `<td class="action-buttons">
+                            <button class="btn-sm btn-secondary edit-customer" data-id="${c.id}">Edit</button>
+                            <button class="btn-sm btn-danger delete-customer" data-id="${c.id}">Delete</button>
+                        </td>
+                        </tr>`;
             });
-            html += `</tbody></table>`;
+            html += `</tbody></table></div>`;
             tableContainer.innerHTML = html;
 
-            document.querySelectorAll('#customersTable th').forEach(th => {
-                th.addEventListener('click', () => {
-                    const sortKey = th.dataset.sort;
-                    if (sortKey) {
-                        currentCustomers.sort((a, b) => {
-                            let valA = a[sortKey] || '';
-                            let valB = b[sortKey] || '';
-                            if (sortKey === 'created_at' || sortKey === 'last_booking_date') {
-                                valA = new Date(valA) || 0;
-                                valB = new Date(valB) || 0;
-                            }
-                            if (valA < valB) return -1;
-                            if (valA > valB) return 1;
-                            return 0;
-                        });
-                        renderCustomerTable();
+            // Attach edit & delete events
+            document.querySelectorAll('.edit-customer').forEach(btn => {
+                btn.addEventListener('click', () => showCustomerModal(parseInt(btn.dataset.id)));
+            });
+            document.querySelectorAll('.delete-customer').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    if (confirm('Delete this customer? All bookings will remain but customer link will be removed.')) {
+                        const delRes = await fetch(`/api/admin/customers/${btn.dataset.id}`, { method: 'DELETE', headers: { 'Authorization': token } });
+                        if (delRes.ok) {
+                            showToast('Customer deleted', 'success');
+                            renderCustomers(container);
+                        } else {
+                            showToast('Error deleting customer', 'error');
+                        }
                     }
                 });
             });
         };
+
+        // Customer Modal functions
+        const showCustomerModal = async (id = null) => {
+            // Reset form
+            document.getElementById('customerId').value = '';
+            document.getElementById('custName').value = '';
+            document.getElementById('custEmail').value = '';
+            document.getElementById('custPhone').value = '';
+            document.getElementById('custAddress').value = '';
+            document.getElementById('custCity').value = '';
+            document.getElementById('custPostcode').value = '';
+            document.getElementById('custReminderDays').value = '';
+
+            if (id) {
+                const custRes = await fetch(`/api/admin/customers/${id}`, { headers: { 'Authorization': token } });
+                const custData = await custRes.json();
+                if (custData.success) {
+                    const c = custData.customer;
+                    document.getElementById('customerId').value = c.id;
+                    document.getElementById('custName').value = c.name || '';
+                    document.getElementById('custEmail').value = c.email || '';
+                    document.getElementById('custPhone').value = c.phone || '';
+                    document.getElementById('custAddress').value = c.address || '';
+                    document.getElementById('custCity').value = c.city || '';
+                    document.getElementById('custPostcode').value = c.postcode || '';
+                    document.getElementById('custReminderDays').value = c.reminder_days || '';
+                    document.getElementById('customerModalTitle').innerText = 'Edit Customer';
+                } else {
+                    showToast('Error loading customer', 'error');
+                    return;
+                }
+            } else {
+                document.getElementById('customerModalTitle').innerText = 'Add Customer';
+            }
+            document.getElementById('customerModal').style.display = 'flex';
+        };
+
+        const closeCustomerModal = () => {
+            document.getElementById('customerModal').style.display = 'none';
+        };
+
+        const saveCustomer = async () => {
+            const payload = {
+                id: document.getElementById('customerId').value || null,
+                name: document.getElementById('custName').value,
+                email: document.getElementById('custEmail').value,
+                phone: document.getElementById('custPhone').value,
+                address: document.getElementById('custAddress').value,
+                city: document.getElementById('custCity').value,
+                postcode: document.getElementById('custPostcode').value,
+                reminder_days: parseInt(document.getElementById('custReminderDays').value) || null
+            };
+            if (!payload.name || !payload.email) {
+                showToast('Name and email are required', 'error');
+                return;
+            }
+            const saveRes = await fetch('/api/admin/customers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                body: JSON.stringify(payload)
+            });
+            if (saveRes.ok) {
+                showToast('Customer saved', 'success');
+                closeCustomerModal();
+                renderCustomers(container);
+            } else {
+                const err = await saveRes.json();
+                showToast(err.error || 'Error saving customer', 'error');
+            }
+        };
+
+        // Build UI
         container.innerHTML = `
-            <div class="page-header"><h1>Customers</h1></div>
+            <div class="page-header">
+                <h1>Customers</h1>
+                <button class="btn-primary" id="addCustomerBtn">+ Add Customer</button>
+            </div>
             <div class="search-bar">
                 <input type="text" id="customerSearch" placeholder="Search by name or email..." style="flex:2;">
                 <button id="manageColumnsBtn" class="btn-secondary" style="white-space: nowrap;">Manage Columns</button>
@@ -417,8 +497,34 @@
                     </div>
                 </div>
             </div>
+            <div id="customerModal" class="modal" style="display:none">
+                <div class="modal-content">
+                    <h2 id="customerModalTitle">Add Customer</h2>
+                    <input type="hidden" id="customerId">
+                    <div class="form-row"><label>Name *</label><input id="custName" placeholder="Full name"></div>
+                    <div class="form-row"><label>Email *</label><input id="custEmail" placeholder="email@example.com"></div>
+                    <div class="form-row"><label>Phone</label><input id="custPhone" placeholder="Phone number"></div>
+                    <div class="form-row"><label>Address</label><input id="custAddress" placeholder="Street address"></div>
+                    <div class="form-row"><label>City</label><input id="custCity" placeholder="City"></div>
+                    <div class="form-row"><label>Postcode</label><input id="custPostcode" placeholder="Postal code"></div>
+                    <div class="form-row"><label>Reminder days (null = use global)</label><input type="number" id="custReminderDays" placeholder="e.g., 1"></div>
+                    <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                        <button class="btn-secondary" id="closeCustModal">Cancel</button>
+                        <button class="btn-primary" id="saveCustBtn">Save</button>
+                    </div>
+                </div>
+            </div>
         `;
 
+        // Event listeners
+        document.getElementById('addCustomerBtn')?.addEventListener('click', () => showCustomerModal());
+        document.getElementById('customerSearch')?.addEventListener('input', (e) => {
+            searchTerm = e.target.value.toLowerCase();
+            currentCustomers = allCustomers.filter(c => c.name?.toLowerCase().includes(searchTerm) || c.email?.toLowerCase().includes(searchTerm));
+            renderCustomerTable();
+        });
+
+        // Column management
         const renderColumnToggles = () => {
             const columnList = document.getElementById('columnList');
             columnList.innerHTML = availableColumns.map(col => `
@@ -428,28 +534,35 @@
                 </div>
             `).join('');
             availableColumns.forEach(col => {
-                const checkbox = document.getElementById(`col_${col.key}`);
-                if (checkbox) {
-                    checkbox.addEventListener('change', (e) => {
+                const cb = document.getElementById(`col_${col.key}`);
+                if (cb) {
+                    cb.addEventListener('change', (e) => {
                         col.visible = e.target.checked;
                         renderCustomerTable();
                     });
                 }
             });
         };
-
-        document.getElementById('customerSearch').addEventListener('input', (e) => {
-            searchTerm = e.target.value.toLowerCase();
-            currentCustomers = allCustomers.filter(c => c.name?.toLowerCase().includes(searchTerm) || c.email?.toLowerCase().includes(searchTerm));
-            renderCustomerTable();
-        });
-        document.getElementById('manageColumnsBtn').addEventListener('click', () => {
+        document.getElementById('manageColumnsBtn')?.addEventListener('click', () => {
             renderColumnToggles();
             document.getElementById('columnModal').style.display = 'flex';
         });
-        document.getElementById('closeColumnModal').addEventListener('click', () => {
+        document.getElementById('closeColumnModal')?.addEventListener('click', () => {
             document.getElementById('columnModal').style.display = 'none';
         });
+
+        // Customer modal buttons
+        document.getElementById('closeCustModal')?.addEventListener('click', closeCustomerModal);
+        document.getElementById('saveCustBtn')?.addEventListener('click', saveCustomer);
+        
+        // Close modal when clicking outside
+        window.addEventListener('click', (e) => {
+            const colModal = document.getElementById('columnModal');
+            // Only close the column modal, NOT the customer/service modals
+            if (e.target === colModal) colModal.style.display = 'none';
+        });
+
+        // Initial render
         currentCustomers = [...allCustomers];
         renderCustomerTable();
     }
@@ -1063,5 +1176,25 @@
         </div>
     </div>
 </div>
+
+<!-- Customer Modal (Add / Edit) -->
+<div id="customerModal" class="modal" style="display:none">
+    <div class="modal-content">
+        <h2 id="customerModalTitle">Add Customer</h2>
+        <input type="hidden" id="customerId">
+        <div class="form-row"><label>Name *</label><input id="custName" placeholder="Full name"></div>
+        <div class="form-row"><label>Email *</label><input id="custEmail" placeholder="email@example.com"></div>
+        <div class="form-row"><label>Phone</label><input id="custPhone" placeholder="Phone number"></div>
+        <div class="form-row"><label>Address</label><input id="custAddress" placeholder="Street address"></div>
+        <div class="form-row"><label>City</label><input id="custCity" placeholder="City"></div>
+        <div class="form-row"><label>Postcode</label><input id="custPostcode" placeholder="Postal code"></div>
+        <div class="form-row"><label>Reminder days (null = use global)</label><input type="number" id="custReminderDays" placeholder="e.g., 1"></div>
+        <div style="display: flex; gap: 10px; justify-content: flex-end;">
+            <button class="btn-secondary" id="closeCustModal">Cancel</button>
+            <button class="btn-primary" id="saveCustBtn">Save</button>
+        </div>
+    </div>
+</div>
+
 </body>
 </html>

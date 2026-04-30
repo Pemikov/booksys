@@ -1,7 +1,7 @@
 const db = require('../config/db');
 
 // Get organization settings
-exports.getSettings = async (req, res) => {
+async function getSettings(req, res) {
     try {
         const orgId = req.organizationId;
         
@@ -38,10 +38,10 @@ exports.getSettings = async (req, res) => {
         console.error('getSettings error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Admin-only availability with customer details
-exports.getAdminAvailability = async (req, res) => {
+async function getAdminAvailability(req, res) {
     try {
         const { date } = req.params;
         const orgId = req.organizationId;
@@ -135,10 +135,10 @@ exports.getAdminAvailability = async (req, res) => {
         console.error('Error fetching admin availability:', error);
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Update business hours
-exports.updateBusinessHours = async (req, res) => {
+async function updateBusinessHours(req, res) {
     try {
         const orgId = req.organizationId;
         const { hours } = req.body;
@@ -157,10 +157,10 @@ exports.updateBusinessHours = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Update organization
-exports.updateOrganization = async (req, res) => {
+async function updateOrganization(req, res) {
     try {
         const orgId = req.organizationId;
         const { name, logo_url, primary_color, timezone, max_advance_booking_days, min_notice_hours, address, phone, email, currency, city, postcode } = req.body;
@@ -187,10 +187,10 @@ exports.updateOrganization = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Get all customers
-exports.getCustomers = async (req, res) => {
+async function getCustomers(req, res) {
     try {
         const orgId = req.organizationId;
         const { search, sort_by = 'created_at', sort_order = 'DESC' } = req.query;
@@ -217,10 +217,10 @@ exports.getCustomers = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Get all bookings (admin)
-exports.getBookings = async (req, res) => {
+async function getBookings(req, res) {
     try {
         const orgId = req.organizationId;
         const { start_date, end_date, status, customer_id } = req.query;
@@ -262,10 +262,10 @@ exports.getBookings = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Update booking status
-exports.updateBookingStatus = async (req, res) => {
+async function updateBookingStatus(req, res) {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -285,10 +285,10 @@ exports.updateBookingStatus = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Get all services
-exports.getServices = async (req, res) => {
+async function getServices(req, res) {
     try {
         const orgId = req.organizationId;
         const result = await db.query(
@@ -299,10 +299,10 @@ exports.getServices = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Get single service by ID
-exports.getServiceById = async (req, res) => {
+async function getServiceById(req, res) {
     try {
         const { id } = req.params;
         const orgId = req.organizationId;
@@ -320,10 +320,10 @@ exports.getServiceById = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Create/update service (handles both insert and update)
-exports.saveService = async (req, res) => {
+async function saveService(req, res) {
     try {
         const orgId = req.organizationId;
         const { id, name, description, duration_minutes, buffer_minutes, price, is_active } = req.body;
@@ -356,10 +356,10 @@ exports.saveService = async (req, res) => {
         console.error('Error saving service:', error);
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Delete service
-exports.deleteService = async (req, res) => {
+async function deleteService(req, res) {
     try {
         const { id } = req.params;
         await db.query(
@@ -370,10 +370,10 @@ exports.deleteService = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Get all staff
-exports.getStaff = async (req, res) => {
+async function getStaff(req, res) {
     try {
         const orgId = req.organizationId;
         const result = await db.query(
@@ -384,10 +384,10 @@ exports.getStaff = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Save staff (insert/update)
-exports.saveStaff = async (req, res) => {
+async function saveStaff(req, res) {
     try {
         const orgId = req.organizationId;
         const { id, name, email, phone, role, color, is_active } = req.body;
@@ -410,10 +410,10 @@ exports.saveStaff = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Delete staff
-exports.deleteStaff = async (req, res) => {
+async function deleteStaff(req, res) {
     try {
         const { id } = req.params;
         await db.query(
@@ -424,10 +424,10 @@ exports.deleteStaff = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Save notification settings
-exports.saveNotificationSettings = async (req, res) => {
+async function saveNotificationSettings(req, res) {
     try {
         const orgId = req.organizationId;
         const { email_enabled, sms_enabled, webhook_enabled, webhook_url, email_from } = req.body;
@@ -449,10 +449,10 @@ exports.saveNotificationSettings = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Get shareable link
-exports.getShareableLink = async (req, res) => {
+async function getShareableLink(req, res) {
     try {
         const orgId = req.organizationId;
         const result = await db.query(
@@ -465,10 +465,10 @@ exports.getShareableLink = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // Get booking page by slug (public)
-exports.getBookingPageBySlug = async (req, res) => {
+async function getBookingPageBySlug(req, res) {
     try {
         const { slug } = req.params;
         const result = await db.query(
@@ -483,10 +483,25 @@ exports.getBookingPageBySlug = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
+
+// Delete customer
+async function deleteCustomer(req, res) {
+    try {
+        const { id } = req.params;
+        const orgId = req.organizationId;
+        await db.query(
+            `DELETE FROM customers WHERE id = $1 AND organization_id = $2`,
+            [id, orgId]
+        );
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
 
 // Mark a booking as no-show
-exports.markAsNoShow = async (req, res) => {
+async function markAsNoShow(req, res) {
     try {
         const { id } = req.params;
         const result = await db.query(
@@ -502,10 +517,10 @@ exports.markAsNoShow = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
 // ========== BOOKING ACTIONS & RECURRING ==========
-exports.sendReminder = async (req, res) => {
+async function sendReminder(req, res) {
     try {
         const { bookingId } = req.params;
         const result = await db.query(
@@ -522,9 +537,10 @@ exports.sendReminder = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
-exports.rescheduleBooking = async (req, res) => {
+// Reschedule a booking
+async function rescheduleBooking(req, res) {
     try {
         const { id } = req.params;
         const { booking_date, start_time, end_time } = req.body;
@@ -538,24 +554,10 @@ exports.rescheduleBooking = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-};
+}
 
-exports.markAsNoShow = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const result = await db.query(
-            `UPDATE bookings SET status = 'no-show', updated_at = CURRENT_TIMESTAMP
-             WHERE id = $1 AND organization_id = $2 RETURNING *`,
-            [id, req.organizationId]
-        );
-        if (result.rows.length === 0) return res.status(404).json({ success: false });
-        res.json({ success: true, booking: result.rows[0] });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-};
-
-exports.createRecurringBookings = async (req, res) => {
+// Create recurring bookings
+async function createRecurringBookings(req, res) {
     try {
         const orgId = req.organizationId;
         const { firstBooking, weeks, customer_id, service_id, staff_id } = req.body;
@@ -577,4 +579,102 @@ exports.createRecurringBookings = async (req, res) => {
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
+}
+
+// saveCustomer now handles both create and update based on presence of id
+async function saveCustomer(req, res) {
+    try {
+        const orgId = req.organizationId;
+        const { id, name, email, phone, address, city, postcode, reminder_days } = req.body;
+        let result;
+        if (id && !isNaN(parseInt(id))) {
+            // Update existing customer
+            result = await db.query(
+                `UPDATE customers SET name=$1, email=$2, phone=$3, address=$4, city=$5, postcode=$6, reminder_days=$7
+                 WHERE id=$8 AND organization_id=$9 RETURNING *`,
+                [name, email, phone, address, city, postcode, reminder_days, id, orgId]
+            );
+        } else {
+            // Insert new customer
+            result = await db.query(
+                `INSERT INTO customers (organization_id, name, email, phone, address, city, postcode, reminder_days)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+                [orgId, name, email, phone, address, city, postcode, reminder_days]
+            );
+        }
+        res.json({ success: true, customer: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Get single customer by ID
+async function getCustomerById(req, res) {
+    try {
+        const { id } = req.params;
+        const orgId = req.organizationId;
+        const result = await db.query(
+            `SELECT id, name, email, phone, address, city, postcode, created_at, reminder_days
+             FROM customers WHERE id = $1 AND organization_id = $2`,
+            [id, orgId]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Customer not found' });
+        }
+        res.json({ success: true, customer: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// Audit log retrieval
+async function getAuditLogs(req, res) {
+    try {
+        const orgId = req.organizationId;
+        const { search } = req.query;
+        let query = `
+            SELECT id, action_type, entity_type, entity_id, old_value, new_value, user_role, user_email, created_at
+            FROM audit_log
+            WHERE organization_id = $1
+        `;
+        const params = [orgId];
+        if (search) {
+            query += ` AND (action_type ILIKE $2 OR entity_type ILIKE $2 OR user_email ILIKE $2 OR old_value::text ILIKE $2 OR new_value::text ILIKE $2)`;
+            params.push(`%${search}%`);
+        }
+        query += ` ORDER BY created_at DESC LIMIT 200`;
+        const result = await db.query(query, params);
+        res.json({ success: true, logs: result.rows });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+}
+
+// EXPORT ALL FUNCTIONS
+module.exports = {
+    getSettings,
+    getAdminAvailability,
+    updateBusinessHours,
+    updateOrganization,
+    getCustomers,
+    getCustomerById,
+    saveCustomer,
+    deleteCustomer,
+    getBookings,
+    updateBookingStatus,
+    getServices,
+    getServiceById,
+    saveService,
+    deleteService,
+    getStaff,
+    saveStaff,
+    deleteStaff,
+    saveNotificationSettings,
+    getShareableLink,
+    getBookingPageBySlug,
+    markAsNoShow,
+    sendReminder,
+    rescheduleBooking,
+    createRecurringBookings,
+    getAuditLogs
 };
