@@ -24,8 +24,8 @@
             <li class="nav-item" data-page="logout"><span class="nav-icon">🚪</span><span>Logout</span></li>
         </ul>
     </div>
-    <div class="main-content" id="mainContent">
-        <div class="spinner">Loading...</div>
+    <div class="main-content">
+        <div id="mainContent"></div>
     </div>
 </div>
 
@@ -554,8 +554,8 @@
         const logs = bookings.flatMap(b => b.booking_history || []).slice(0, 50);
         container.innerHTML = `<div class="page-header"><h1>Audit Logs</h1></div>
             <table class="data-table"><thead><tr><th>Time</th><th>Booking ID</th><th>Action</th><th>Details</th></tr></thead><tbody>
-            ${logs.map(l => `<tr><td>${new Date(l.changed_at).toLocaleString()}</td><td>${l.booking_id}</td><td>Status: ${l.old_status} → ${l.new_status}</td><td>${l.notes || ''}</td></tr>`).join('')}
-            </tbody></table>`;
+            ${logs.map(l => `<tr><td>${new Date(l.changed_at).toLocaleString()}</td><td>${l.booking_id}</td><td>Status: ${l.old_status} → ${l.new_status}</td><td>${l.notes || ''}</td></td>`).join('')}
+            </tbody>｜｜DSML｜｜`;
         if (!logs.length) container.innerHTML += '<div class="spinner">No logs yet</div>';
     }
 
@@ -564,15 +564,32 @@
         document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
         document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
         const container = document.getElementById('mainContent');
-        container.innerHTML = '<div class="spinner">Loading...</div>';
-        if (page === 'dashboard') await renderDashboard(container);
-        else if (page === 'calendar') await renderCalendar(container);
-        else if (page === 'bookings') await renderBookings(container);
-        else if (page === 'customers') await renderCustomers(container);
-        else if (page === 'services') await renderServices(container);
-        else if (page === 'settings') await renderSettings(container);
-        else if (page === 'logs') await renderLogs(container);
+        // Clear container and add persistent header + page content
+        container.innerHTML = `<div id="persistentHeader" style="display: flex; justify-content: flex-end; align-items: center; margin-bottom: 20px; padding: 0;">
+            <div style="text-align: right;">
+                <div id="adminWelcome" style="font-size: 14px; color: #666;">Welcome, Loading...</div>
+                <div id="adminLiveDateTime" style="font-size: 14px; color: #666; margin-top: 5px;"></div>
+            </div>
+        </div>`;
+        // Create a temporary div to hold the page content
+        const contentDiv = document.createElement('div');
+        contentDiv.id = 'pageContent';
+        container.appendChild(contentDiv);
+        // Show spinner while loading
+        contentDiv.innerHTML = '<div class="spinner">Loading...</div>';
+        
+        if (page === 'dashboard') await renderDashboard(contentDiv);
+        else if (page === 'calendar') await renderCalendar(contentDiv);
+        else if (page === 'bookings') await renderBookings(contentDiv);
+        else if (page === 'customers') await renderCustomers(contentDiv);
+        else if (page === 'services') await renderServices(contentDiv);
+        else if (page === 'settings') await renderSettings(contentDiv);
+        else if (page === 'logs') await renderLogs(contentDiv);
         else if (page === 'logout') logout();
+        
+        // Update welcome text and ensure datetime interval works
+        const welcomeEl = document.getElementById('adminWelcome');
+        if (welcomeEl && adminInfo) welcomeEl.innerText = `Welcome, ${adminInfo.name || 'Admin'}`;
     }
 
     function attachMenuEvents() {
@@ -688,88 +705,88 @@
                         </td>
                     </tr>`;
                 }
-                html += '</tbody></table>';
+                html += '</tbody></td>';
                 calDiv.innerHTML = html;
                 document.getElementById('calDate').innerText = currentDate.toLocaleDateString();
             } else if (currentView === 'week') {
-                    const startOfWeek = new Date(currentDate);
-                    startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
-                    const days = [];
-                    for (let i = 0; i < 7; i++) {
-                        const day = new Date(startOfWeek);
-                        day.setDate(startOfWeek.getDate() + i);
-                        days.push(day);
-                    }
-
-                    // Determine all possible time slots from all open days in the week
-                    let allSlots = [];
-                    for (const day of days) {
-                        const dow = day.getDay();
-                        const bh = businessHours.find(h => h.day_of_week === dow);
-                        if (bh && bh.is_open) {
-                            let cur = new Date(`2000-01-01T${bh.open_time}`);
-                            const close = new Date(`2000-01-01T${bh.close_time}`);
-                            const interval = bh.slot_interval || 30;
-                            while (cur < close) {
-                                const start = cur.toTimeString().slice(0,5);
-                                cur.setMinutes(cur.getMinutes() + interval);
-                                const end = cur.toTimeString().slice(0,5);
-                                if (!allSlots.find(s => s.start === start && s.end === end)) {
-                                    allSlots.push({ start, end });
-                                }
-                            }
-                        }
-                    }
-                    allSlots.sort((a,b) => a.start.localeCompare(b.start));
-
-                    // Fetch availability for each day in parallel
-                    const availMap = {};
-                    await Promise.all(days.map(async (day) => {
-                        const slots = await getAvailability(day);
-                        const dateStr = day.toISOString().split('T')[0];
-                        availMap[dateStr] = slots;
-                    }));
-
-                    // Build the HTML table: rows = time slots, columns = days
-                    let html = '<table class="weekly-table" style="width:100%; border-collapse:collapse;">';
-                    html += '<thead><tr><th style="width:15%">Time</th>';
-                    for (const day of days) {
-                        html += `<th>${day.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}</th>`;
-                    }
-                    html += '</thead><tbody>';
-
-                    for (const slot of allSlots) {
-                        html += '<tr>';
-                        html += `<td style="padding:6px; border:1px solid #ddd; background:#f8f9fa;">${slot.start} - ${slot.end}</td>`;
-                        for (const day of days) {
-                            const dateStr = day.toISOString().split('T')[0];
-                            const slotsForDay = availMap[dateStr] || [];
-                            const found = slotsForDay.find(s => s.slot_start === slot.start);
-                            const isAvail = found ? found.is_available : false;
-                            const bookingId = found ? found.booking_id : null;
-                            const customerName = found ? (found.customer_name || '') : '';
-                            const localDateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
-
-                            if (!found) {
-                                html += `<td style="padding:6px; border:1px solid #ddd; text-align:center;">—</td>`;
-                            } else if (isAvail) {
-                                html += `<td style="padding:6px; border:1px solid #ddd; background:#d4edda; text-align:center;">
-                                            <button class="btn-sm btn-book" onclick="openAdminBookingModal('${localDateStr}','${slot.start}','${slot.end}')">Book</button>
-                                        </td>`;
-                            } else {
-                                const shortCustomer = customerName.length > 12 ? customerName.substring(0,10)+'…' : customerName;
-                                html += `<td style="padding:6px; border:1px solid #ddd; background:#f8d7da; text-align:center;">
-                                            ❌ Booked<br><small>${shortCustomer}</small><br>
-                                            <button class="btn-sm btn-cancel" onclick="adminCancelBooking(${bookingId})">Cancel</button>
-                                        </td>`;
-                            }
-                        }
-                        html += '</tr>';
-                    }
-                    html += '</tbody></table>';
-                    calDiv.innerHTML = html;
-                    document.getElementById('calDate').innerText = `Week of ${startOfWeek.toLocaleDateString()}`;
+                const startOfWeek = new Date(currentDate);
+                startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+                const days = [];
+                for (let i = 0; i < 7; i++) {
+                    const day = new Date(startOfWeek);
+                    day.setDate(startOfWeek.getDate() + i);
+                    days.push(day);
                 }
+
+                // Determine all possible time slots from all open days in the week
+                let allSlots = [];
+                for (const day of days) {
+                    const dow = day.getDay();
+                    const bh = businessHours.find(h => h.day_of_week === dow);
+                    if (bh && bh.is_open) {
+                        let cur = new Date(`2000-01-01T${bh.open_time}`);
+                        const close = new Date(`2000-01-01T${bh.close_time}`);
+                        const interval = bh.slot_interval || 30;
+                        while (cur < close) {
+                            const start = cur.toTimeString().slice(0,5);
+                            cur.setMinutes(cur.getMinutes() + interval);
+                            const end = cur.toTimeString().slice(0,5);
+                            if (!allSlots.find(s => s.start === start && s.end === end)) {
+                                allSlots.push({ start, end });
+                            }
+                        }
+                    }
+                }
+                allSlots.sort((a,b) => a.start.localeCompare(b.start));
+
+                // Fetch availability for each day in parallel
+                const availMap = {};
+                await Promise.all(days.map(async (day) => {
+                    const slots = await getAvailability(day);
+                    const dateStr = day.toISOString().split('T')[0];
+                    availMap[dateStr] = slots;
+                }));
+
+                // Build the HTML table: rows = time slots, columns = days
+                let html = '<table class="weekly-table" style="width:100%; border-collapse:collapse;">';
+                html += '<thead></td><th style="width:15%">Time</th>';
+                for (const day of days) {
+                    html += `<th>${day.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}</th>`;
+                }
+                html += '</thead><tbody>';
+
+                for (const slot of allSlots) {
+                    html += '<tr>';
+                    html += `<td style="padding:6px; border:1px solid #ddd; background:#f8f9fa;">${slot.start} - ${slot.end}</td>`;
+                    for (const day of days) {
+                        const dateStr = day.toISOString().split('T')[0];
+                        const slotsForDay = availMap[dateStr] || [];
+                        const found = slotsForDay.find(s => s.slot_start === slot.start);
+                        const isAvail = found ? found.is_available : false;
+                        const bookingId = found ? found.booking_id : null;
+                        const customerName = found ? (found.customer_name || '') : '';
+                        const localDateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
+
+                        if (!found) {
+                            html += `<td style="padding:6px; border:1px solid #ddd; text-align:center;">—</td>`;
+                        } else if (isAvail) {
+                            html += `<td style="padding:6px; border:1px solid #ddd; background:#d4edda; text-align:center;">
+                                        <button class="btn-sm btn-book" onclick="openAdminBookingModal('${localDateStr}','${slot.start}','${slot.end}')">Book</button>
+                                      </td>`;
+                        } else {
+                            const shortCustomer = customerName.length > 12 ? customerName.substring(0,10)+'…' : customerName;
+                            html += `<td style="padding:6px; border:1px solid #ddd; background:#f8d7da; text-align:center;">
+                                        ❌ Booked<br><small>${shortCustomer}</small><br>
+                                        <button class="btn-sm btn-cancel" onclick="adminCancelBooking(${bookingId})">Cancel</button>
+                                      </td>`;
+                        }
+                    }
+                    html += '</tr>';
+                }
+                html += '</tbody></table>';
+                calDiv.innerHTML = html;
+                document.getElementById('calDate').innerText = `Week of ${startOfWeek.toLocaleDateString()}`;
+            }
         }
 
         window.selectDateAdmin = (dateStr) => {
@@ -801,10 +818,6 @@
 
         await renderView();
     }
-
-
-
-
 
     // ===================== ADMIN BOOKING MODAL =====================
     async function loadAdminBookingOptions() {
@@ -1030,5 +1043,25 @@
     </div>
 </div>
 
+<!-- Service Modal -->
+<div id="serviceModal" class="modal" style="display:none">
+    <div class="modal-content">
+        <h2 id="modalTitle">Add Service</h2>
+        <input type="hidden" id="serviceId">
+        <div class="form-row"><label>Service Name</label><input id="serviceName" placeholder="e.g., Dental Cleaning"></div>
+        <div class="form-row"><label>Description</label><textarea id="serviceDescription" rows="3"></textarea></div>
+        <div class="form-row"><label>Duration (minutes)</label><input id="serviceDuration" type="number" value="30"></div>
+        <div class="form-row"><label>Buffer (minutes)</label><input id="serviceBuffer" type="number" value="0"></div>
+        <div class="form-row"><label>Price (${window.currencySymbol})</label><input id="servicePrice" type="number" step="0.01" value="0"></div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 15px;">
+            <input type="checkbox" id="serviceActive" checked style="margin: 0;">
+            <label for="serviceActive" style="margin: 0; font-weight: normal;">Active</label>
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <button class="btn-secondary" id="closeServiceModal">Cancel</button>
+            <button class="btn-primary" id="saveServiceBtn">Save</button>
+        </div>
+    </div>
+</div>
 </body>
 </html>
