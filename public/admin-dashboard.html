@@ -661,29 +661,84 @@
                 calDiv.innerHTML = html;
                 document.getElementById('calDate').innerText = currentDate.toLocaleDateString();
             } else if (currentView === 'week') {
-                const startOfWeek = new Date(currentDate);
-                startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
-                const days = [];
-                for (let i=0; i<7; i++) {
-                    const day = new Date(startOfWeek);
-                    day.setDate(startOfWeek.getDate() + i);
-                    days.push(day);
+                    const startOfWeek = new Date(currentDate);
+                    startOfWeek.setDate(currentDate.getDate() - currentDate.getDay());
+                    const days = [];
+                    for (let i = 0; i < 7; i++) {
+                        const day = new Date(startOfWeek);
+                        day.setDate(startOfWeek.getDate() + i);
+                        days.push(day);
+                    }
+
+                    // Determine all possible time slots from all open days in the week
+                    let allSlots = [];
+                    for (const day of days) {
+                        const dow = day.getDay();
+                        const bh = businessHours.find(h => h.day_of_week === dow);
+                        if (bh && bh.is_open) {
+                            let cur = new Date(`2000-01-01T${bh.open_time}`);
+                            const close = new Date(`2000-01-01T${bh.close_time}`);
+                            const interval = bh.slot_interval || 30;
+                            while (cur < close) {
+                                const start = cur.toTimeString().slice(0,5);
+                                cur.setMinutes(cur.getMinutes() + interval);
+                                const end = cur.toTimeString().slice(0,5);
+                                if (!allSlots.find(s => s.start === start && s.end === end)) {
+                                    allSlots.push({ start, end });
+                                }
+                            }
+                        }
+                    }
+                    allSlots.sort((a,b) => a.start.localeCompare(b.start));
+
+                    // Fetch availability for each day in parallel
+                    const availMap = {};
+                    await Promise.all(days.map(async (day) => {
+                        const slots = await getAvailability(day);
+                        const dateStr = day.toISOString().split('T')[0];
+                        availMap[dateStr] = slots;
+                    }));
+
+                    // Build the HTML table: rows = time slots, columns = days
+                    let html = '<table class="weekly-table" style="width:100%; border-collapse:collapse;">';
+                    html += '<thead><tr><th style="width:15%">Time</th>';
+                    for (const day of days) {
+                        html += `<th>${day.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}</th>`;
+                    }
+                    html += '</thead><tbody>';
+
+                    for (const slot of allSlots) {
+                        html += '<tr>';
+                        html += `<td style="padding:6px; border:1px solid #ddd; background:#f8f9fa;">${slot.start} - ${slot.end}</td>`;
+                        for (const day of days) {
+                            const dateStr = day.toISOString().split('T')[0];
+                            const slotsForDay = availMap[dateStr] || [];
+                            const found = slotsForDay.find(s => s.slot_start === slot.start);
+                            const isAvail = found ? found.is_available : false;
+                            const bookingId = found ? found.booking_id : null;
+                            const customerName = found ? (found.customer_name || '') : '';
+                            const localDateStr = `${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
+
+                            if (!found) {
+                                html += `<td style="padding:6px; border:1px solid #ddd; text-align:center;">—</td>`;
+                            } else if (isAvail) {
+                                html += `<td style="padding:6px; border:1px solid #ddd; background:#d4edda; text-align:center;">
+                                            <button class="btn-sm btn-book" onclick="openAdminBookingModal('${localDateStr}','${slot.start}','${slot.end}')">Book</button>
+                                        </td>`;
+                            } else {
+                                const shortCustomer = customerName.length > 12 ? customerName.substring(0,10)+'…' : customerName;
+                                html += `<td style="padding:6px; border:1px solid #ddd; background:#f8d7da; text-align:center;">
+                                            ❌ Booked<br><small>${shortCustomer}</small><br>
+                                            <button class="btn-sm btn-cancel" onclick="adminCancelBooking(${bookingId})">Cancel</button>
+                                        </td>`;
+                            }
+                        }
+                        html += '</tr>';
+                    }
+                    html += '</tbody></table>';
+                    calDiv.innerHTML = html;
+                    document.getElementById('calDate').innerText = `Week of ${startOfWeek.toLocaleDateString()}`;
                 }
-                let html = '<table class="weekly-table"><thead><tr>';
-                for (const day of days) {
-                    html += `<th>${day.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' })}</th>`;
-                }
-                html += '</tr></thead><tbody></tr>';
-                for (const day of days) {
-                    const slots = await getAvailability(day);
-                    const availableCount = slots.filter(s => s.is_available).length;
-                    const totalCount = slots.length;
-                    html += `<td style="text-align:center; vertical-align:middle;">${totalCount > 0 ? `${availableCount} / ${totalCount} slots free` : 'Closed'}</td>`;
-                }
-                html += '</tr></tbody></table>';
-                calDiv.innerHTML = html;
-                document.getElementById('calDate').innerText = `Week of ${startOfWeek.toLocaleDateString()}`;
-            }
         }
 
         window.selectDateAdmin = (dateStr) => {
