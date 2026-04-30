@@ -9,6 +9,13 @@ router.use(isAuthenticated);
 // Availability (admin version)
 router.get('/availability/:date', adminController.getAdminAvailability);
 
+// Mark a booking
+router.put('/bookings/:id/no-show', adminController.markAsNoShow);
+router.post('/bookings/:bookingId/remind', adminController.sendReminder);
+router.put('/bookings/:id/reschedule', adminController.rescheduleBooking);
+router.put('/bookings/:id/no-show', adminController.markAsNoShow);
+router.post('/bookings/recurring', adminController.createRecurringBookings);
+
 // Settings
 router.get('/settings', adminController.getSettings);
 router.put('/settings/business-hours', adminController.updateBusinessHours);

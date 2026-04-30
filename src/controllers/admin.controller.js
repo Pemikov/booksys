@@ -484,3 +484,97 @@ exports.getBookingPageBySlug = async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 };
+
+// Mark a booking as no-show
+exports.markAsNoShow = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query(
+            `UPDATE bookings SET status = 'no-show', updated_at = CURRENT_TIMESTAMP
+             WHERE id = $1 AND organization_id = $2
+             RETURNING *`,
+            [id, req.organizationId]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Booking not found' });
+        }
+        res.json({ success: true, booking: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// ========== BOOKING ACTIONS & RECURRING ==========
+exports.sendReminder = async (req, res) => {
+    try {
+        const { bookingId } = req.params;
+        const result = await db.query(
+            `SELECT b.*, c.email, c.name as customer_name
+             FROM bookings b
+             JOIN customers c ON b.customer_id = c.id
+             WHERE b.id = $1 AND b.organization_id = $2`,
+            [bookingId, req.organizationId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ success: false });
+        // Placeholder for actual email sending
+        console.log(`Reminder sent for booking ${bookingId} to ${result.rows[0].email}`);
+        res.json({ success: true, message: 'Reminder sent (log only)' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.rescheduleBooking = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { booking_date, start_time, end_time } = req.body;
+        const result = await db.query(
+            `UPDATE bookings SET booking_date = $1, start_time = $2, end_time = $3, updated_at = CURRENT_TIMESTAMP
+             WHERE id = $4 AND organization_id = $5 RETURNING *`,
+            [booking_date, start_time, end_time, id, req.organizationId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ success: false });
+        res.json({ success: true, booking: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.markAsNoShow = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const result = await db.query(
+            `UPDATE bookings SET status = 'no-show', updated_at = CURRENT_TIMESTAMP
+             WHERE id = $1 AND organization_id = $2 RETURNING *`,
+            [id, req.organizationId]
+        );
+        if (result.rows.length === 0) return res.status(404).json({ success: false });
+        res.json({ success: true, booking: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.createRecurringBookings = async (req, res) => {
+    try {
+        const orgId = req.organizationId;
+        const { firstBooking, weeks, customer_id, service_id, staff_id } = req.body;
+        const { booking_date, start_time, end_time } = firstBooking;
+        const bookings = [];
+        for (let i = 0; i < weeks; i++) {
+            const date = new Date(booking_date);
+            date.setDate(date.getDate() + i * 7);
+            const dateStr = date.toISOString().split('T')[0];
+            const result = await db.query(
+                `INSERT INTO bookings (organization_id, customer_id, service_id, staff_id, booking_date, start_time, end_time, customer_name, customer_email, status)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
+                 RETURNING *`,
+                [orgId, customer_id, service_id, staff_id, dateStr, start_time, end_time, '', '']
+            );
+            bookings.push(result.rows[0]);
+        }
+        res.json({ success: true, bookings });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};

@@ -77,6 +77,7 @@
         </div>
         <ul class="nav-menu">
             <li class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span><span>Dashboard</span></li>
+            <li class="nav-item" data-page="bookings"><span class="nav-icon">📋</span><span>Bookings</span></li> 
             <li class="nav-item" data-page="calendar"><span class="nav-icon">📅</span><span>Calendar</span></li>
             <li class="nav-item" data-page="customers"><span class="nav-icon">👥</span><span>Customers</span></li>
             <li class="nav-item" data-page="services"><span class="nav-icon">💼</span><span>Services</span></li>
@@ -91,7 +92,7 @@
 </div>
 
 <script>
-    let token = localStorage.getItem('adminToken');
+    let token = localStorage.getItem('adminToken') || sessionStorage.getItem('adminToken');
     let adminInfo = null;
 
     // Helper: Save with automatic page refresh (used in settings)
@@ -275,6 +276,97 @@
         }
     }
 
+
+    // ===================== BOOKING PAGE =====================
+
+    async function renderBookings(container) {
+        const res = await fetch('/api/admin/bookings', { headers: { 'Authorization': token } });
+        const data = await res.json();
+        const allBookings = data.bookings || [];
+        let filtered = [...allBookings];
+        let searchTerm = '';
+        let statusFilter = '';
+
+        const renderBookingsTable = () => {
+            const tableContainer = document.getElementById('bookingsTable');
+            let filteredByStatus = statusFilter ? filtered.filter(b => b.status === statusFilter) : filtered;
+            if (filteredByStatus.length === 0) {
+                tableContainer.innerHTML = '<div class="spinner">No bookings found</div>';
+                return;
+            }
+            let html = `<div style="overflow-x:auto;"><table class="data-table"><thead><tr>
+                <th>ID</th><th>Date</th><th>Time</th><th>Customer</th><th>Email</th><th>Phone</th><th>Service</th><th>Staff</th><th>Status</th><th>Created</th><th>Actions</th>
+            </tr></thead><tbody>`;
+            filteredByStatus.forEach(b => {
+                html += `<tr>
+                    <td>${b.id}</td>
+                    <td>${b.booking_date?.slice(0,10)}</td>
+                    <td>${b.start_time} - ${b.end_time}</td>
+                    <td>${b.customer_name || ''}</td>
+                    <td>${b.customer_email || ''}</td>
+                    <td>${b.customer_phone || ''}</td>
+                    <td>${b.service_name || '-'}</td>
+                    <td>${b.staff_name || '-'}</td>
+                    <td class="status-badge status-${b.status}">${b.status}</td>
+                    <td>${b.created_at ? new Date(b.created_at).toLocaleDateString() : '-'}</td>
+                    <td class="action-buttons">
+                        <button class="btn-sm btn-remind" onclick="sendReminder(${b.id})">Remind</button>
+                        <button class="btn-sm btn-reschedule" onclick="rescheduleBooking(${b.id})">Reschedule</button>
+                        <button class="btn-sm btn-cancel" onclick="cancelBooking(${b.id})">Cancel</button>
+                        ${b.status !== 'no-show' ? `<button class="btn-sm btn-secondary" onclick="markAsNoShow(${b.id})">No‑Show</button>` : ''}
+                    </td>
+                </tr>`;
+            });
+            html += `</tbody></table></div>`;
+            tableContainer.innerHTML = html;
+        };
+
+        // Filter by status dropdown
+        const statusSelect = document.createElement('select');
+        statusSelect.id = 'bookingStatusFilter';
+        statusSelect.innerHTML = `<option value="">All status</option>
+            <option value="pending">Pending</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="cancelled">Cancelled</option>
+            <option value="completed">Completed</option>
+            <option value="no-show">No‑Show</option>`;
+        statusSelect.addEventListener('change', (e) => {
+            statusFilter = e.target.value;
+            renderBookingsTable();
+        });
+
+        // Search input
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.id = 'bookingSearch';
+        searchInput.placeholder = 'Search by customer name, email, or phone...';
+        searchInput.style.flex = '1';
+        searchInput.addEventListener('input', (e) => {
+            searchTerm = e.target.value.toLowerCase();
+            filtered = allBookings.filter(b =>
+                (b.customer_name?.toLowerCase().includes(searchTerm)) ||
+                (b.customer_email?.toLowerCase().includes(searchTerm)) ||
+                (b.customer_phone?.toLowerCase().includes(searchTerm))
+            );
+            renderBookingsTable();
+        });
+
+        const toolbar = document.createElement('div');
+        toolbar.className = 'search-bar';
+        toolbar.appendChild(searchInput);
+        toolbar.appendChild(statusSelect);
+
+        container.innerHTML = `<div class="page-header"><h1>Bookings</h1></div>`;
+        container.appendChild(toolbar);
+        const tableDiv = document.createElement('div');
+        tableDiv.id = 'bookingsTable';
+        container.appendChild(tableDiv);
+
+        filtered = [...allBookings];
+        renderBookingsTable();
+    }
+
+
     // ===================== DASHBOARD PAGE =====================
     async function renderDashboard(container) {
         const [bookingsRes, customersRes] = await Promise.all([
@@ -305,7 +397,7 @@
     function renderTable(bookings) {
         if (!bookings.length) return '<div>No bookings</div>';
         return `<table class="data-table"><thead><tr><th>Date</th><th>Time</th><th>Customer</th><th>Status</th></tr></thead><tbody>
-            ${bookings.map(b => `<tr><td>${b.booking_date}</td>.With${b.start_time}-${b.end_time}</td><td>${b.customer_name}</td><td><span class="status-badge status-${b.status}">${b.status}</span></td></tr>`).join('')}
+            ${bookings.map(b => `<tr><td>${b.booking_date.slice(0,10)}</td><td>${b.start_time}-${b.end_time}</td><td>${b.customer_name}</td><td class="status-badge status-${b.status}">${b.status}</td></tr>`).join('')}
         </tbody></table>`;
     }
 
@@ -537,6 +629,7 @@
         container.innerHTML = '<div class="spinner">Loading...</div>';
         if (page === 'dashboard') await renderDashboard(container);
         else if (page === 'calendar') await renderCalendar(container);
+        else if (page === 'bookings') await renderBookings(container);
         else if (page === 'customers') await renderCustomers(container);
         else if (page === 'services') await renderServices(container);
         else if (page === 'settings') await renderSettings(container);
@@ -771,6 +864,10 @@
         await renderView();
     }
 
+
+
+
+
     // ===================== ADMIN BOOKING MODAL =====================
     async function loadAdminBookingOptions() {
         const [servicesRes, staffRes] = await Promise.all([
@@ -815,38 +912,79 @@
         const phone = document.getElementById('adminBookingPhone').value;
         const serviceId = document.getElementById('adminBookingService').value;
         const staffId = document.getElementById('adminBookingStaff').value;
+        const recurring = document.getElementById('recurringCheckbox')?.checked || false;
 
         if (!name || !email) {
             showToast('Name and email are required', 'error');
             return;
         }
 
+        // Find or create customer
+        let customerId = null;
+        const existingCustomer = await fetch(`/api/admin/customers?search=${encodeURIComponent(email)}`, { headers: { 'Authorization': token } });
+        const existingData = await existingCustomer.json();
+        const found = existingData.customers?.find(c => c.email === email);
+        if (found) {
+            customerId = found.id;
+        } else {
+            const newCust = await fetch('/api/admin/customers', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                body: JSON.stringify({ name, email, phone, organization_id: adminInfo.organization_id })
+            });
+            const newData = await newCust.json();
+            if (newData.success) customerId = newData.customer.id;
+        }
+
+        if (!customerId) {
+            showToast('Could not create/find customer', 'error');
+            return;
+        }
+
         const payload = {
             organization_id: adminInfo.organization_id,
-            customer_name: name,
-            customer_email: email,
-            customer_phone: phone,
+            customer_id: customerId,
+            service_id: serviceId || null,
+            staff_id: staffId || null,
             booking_date: date,
             start_time: start,
             end_time: end,
-            service_id: serviceId || null,
-            staff_id: staffId || null
+            customer_name: name,
+            customer_email: email,
+            customer_phone: phone,
+            status: 'pending'
         };
 
-        const res = await fetch('/api/calendar/bookings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': token },
-            body: JSON.stringify(payload)
-        });
-        const data = await res.json();
-        if (data.success) {
-            showToast('Booking confirmed', 'success');
-            closeAdminBookingModal();
-            // Refresh the calendar
-            const container = document.getElementById('mainContent');
-            renderCalendar(container);
+        if (recurring) {
+            const weeks = 4;
+            const res = await fetch('/api/admin/bookings/recurring', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                body: JSON.stringify({ firstBooking: payload, weeks, customer_id: customerId, service_id: serviceId, staff_id: staffId })
+            });
+            if (res.ok) {
+                showToast('Recurring bookings created (4 weeks)', 'success');
+                closeAdminBookingModal();
+                const container = document.getElementById('mainContent');
+                renderCalendar(container);
+            } else {
+                showToast('Error creating recurring bookings', 'error');
+            }
         } else {
-            showToast(data.error || 'Booking failed', 'error');
+            const res = await fetch('/api/calendar/bookings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': token },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('Booking confirmed', 'success');
+                closeAdminBookingModal();
+                const container = document.getElementById('mainContent');
+                renderCalendar(container);
+            } else {
+                showToast(data.error || 'Booking failed', 'error');
+            }
         }
     }
 
@@ -865,6 +1003,48 @@
             showToast('Error cancelling', 'error');
         }
     }
+
+     // ========== BOOKINGS PAGE ACTION FUNCTIONS ==========
+    window.sendReminder = async (bookingId) => {
+        const res = await fetch(`/api/admin/bookings/${bookingId}/remind`, { method: 'POST', headers: { 'Authorization': token } });
+        if (res.ok) showToast('Reminder sent', 'success');
+        else showToast('Failed', 'error');
+    };
+
+    window.rescheduleBooking = async (bookingId) => {
+        const newDate = prompt('New date (YYYY-MM-DD):');
+        const newStart = prompt('New start time (HH:MM:SS):');
+        const newEnd = prompt('New end time (HH:MM:SS):');
+        if (!newDate || !newStart || !newEnd) return;
+        const res = await fetch(`/api/admin/bookings/${bookingId}/reschedule`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': token },
+            body: JSON.stringify({ booking_date: newDate, start_time: newStart, end_time: newEnd })
+        });
+        if (res.ok) { showToast('Rescheduled', 'success'); loadPage('bookings'); }
+        else showToast('Error', 'error');
+    };
+
+    window.cancelBooking = async (bookingId) => {
+        if (!confirm('Cancel this booking?')) return;
+        const res = await fetch(`/api/admin/bookings/${bookingId}/status`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': token },
+            body: JSON.stringify({ status: 'cancelled' })
+        });
+        if (res.ok) { showToast('Cancelled', 'success'); loadPage('bookings'); }
+        else showToast('Error', 'error');
+    };
+
+    window.markAsNoShow = async (bookingId) => {
+        if (!confirm('Mark this booking as no-show?')) return;
+        const res = await fetch(`/api/admin/bookings/${bookingId}/no-show`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', 'Authorization': token }
+        });
+        if (res.ok) { showToast('Marked as no-show', 'success'); loadPage('bookings'); }
+        else showToast('Error', 'error');
+    };
 
     // Attach modal event listeners
     document.addEventListener('DOMContentLoaded', () => {
@@ -904,6 +1084,7 @@
         <div class="form-row"><label>Customer Phone</label><input type="tel" id="adminBookingPhone"></div>
         <div class="form-row"><label>Service</label><select id="adminBookingService"></select></div>
         <div class="form-row"><label>Staff</label><select id="adminBookingStaff"></select></div>
+        <div class="form-row"><label><input type="checkbox" id="recurringCheckbox"> Repeat weekly (4 weeks)</label></div>
         <div style="display: flex; gap: 8px; justify-content: flex-end;">
             <button class="btn-secondary" id="closeAdminBookingModal">Cancel</button>
             <button class="btn-primary" id="confirmAdminBookingBtn">Confirm Booking</button>
