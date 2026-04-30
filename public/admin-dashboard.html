@@ -13,7 +13,7 @@
             <h2>Booking System</h2>
             <div id="orgNameSidebar" class="org-name-sidebar">Loading...</div>
         </div>
-        <ul class="nav-menu">
+          <ul class="nav-menu">
             <li class="nav-item active" data-page="dashboard"><span class="nav-icon">📊</span><span>Dashboard</span></li>
             <li class="nav-item" data-page="bookings"><span class="nav-icon">📋</span><span>Bookings</span></li> 
             <li class="nav-item" data-page="calendar"><span class="nav-icon">📅</span><span>Calendar</span></li>
@@ -21,7 +21,7 @@
             <li class="nav-item" data-page="services"><span class="nav-icon">💼</span><span>Services</span></li>
             <li class="nav-item" data-page="settings"><span class="nav-icon">⚙️</span><span>Settings</span></li>
             <li class="nav-item" data-page="logs"><span class="nav-icon">📜</span><span>Logs</span></li>
-            <li class="nav-item" data-page="logout"><span class="nav-icon">🚪</span><span>Logout</span></li>
+            <li class="nav-item" data-page="logout" style="margin-top: 50px; border-top: 1px solid #444;"><span class="nav-icon">🚪</span><span>Logout</span></li>
         </ul>
     </div>
     <div class="main-content">
@@ -1127,9 +1127,50 @@
     }
 
     async function logout() {
-        await fetch('/api/auth/admin/logout', { method: 'POST', headers: { 'Authorization': token } });
-        localStorage.clear();
-        window.location.href = '/admin';
+        // Create and show modal
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'flex';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 400px;">
+                <h2 style="margin-bottom: 20px;">Confirm Logout</h2>
+                <p style="margin-bottom: 20px;">Are you sure you want to logout?</p>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button class="btn-secondary" id="cancelLogoutBtn">Cancel</button>
+                    <button class="btn-danger" id="confirmLogoutBtn" style="background-color: #dc3545; color: white;">Logout</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Close modal on cancel button click
+        document.getElementById('cancelLogoutBtn').addEventListener('click', () => {
+            modal.remove();
+        });
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+        
+        // Handle logout confirmation
+        document.getElementById('confirmLogoutBtn').addEventListener('click', async () => {
+            try {
+                await fetch('/api/auth/admin/logout', { 
+                    method: 'POST', 
+                    headers: { 'Authorization': token } 
+                });
+            } catch(e) {
+                // Ignore fetch errors
+            }
+            
+            localStorage.clear();
+            sessionStorage.clear();
+            window.location.href = '/admin';
+        });
     }
 
     // Start the application
